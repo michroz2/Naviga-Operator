@@ -1,26 +1,23 @@
 /*
  * Файл: ble_protocol.dart
- * Версия: 1.1
- * Изменения: Первичная реализация контракта BLE (версия спецификации 1.29).
- * Описание: Содержит константы UUID, коды операций и дата-классы для 
- *           сериализации/десериализации бинарных структур данных.
- *           Используется строгая упаковка без выравнивания и Little Endian.
+ * Версия: 1.5
+ * Изменения: Изменен префикс имени устройства согласно спецификации 1.32 (Naviga-XXXX).
+ * Описание: Содержит константы UUID, коды операций и дата-классы для парсинга бинарных структур.
  */
 
 import 'dart:convert';
 import 'dart:typed_data';
 
-/// Константы BLE (UUID)[cite: 4]
+/// Константы BLE (UUID)[cite: 1]
 class BleConfig {
-  static const String deviceNamePrefix = 'Naviga-Dongle';
+  // ИСПРАВЛЕНИЕ: Теперь ищем только по префиксу, так как имя содержит MAC[cite: 1]
+  static const String deviceNamePrefix = 'Naviga-';
   static const String serviceUuid = '6E400001-B5A3-F393-E0A9-E50E24DCCA9E';
-  static const String rxCharacteristicUuid = '6E400002-B5A3-F393-E0A9-E50E24DCCA9E'; // Смартфон -> Донгл
-  static const String txCharacteristicUuid = '6E400003-B5A3-F393-E0A9-E50E24DCCA9E'; // Донгл -> Смартфон
+  static const String rxCharacteristicUuid = '6E400002-B5A3-F393-E0A9-E50E24DCCA9E'; 
+  static const String txCharacteristicUuid = '6E400003-B5A3-F393-E0A9-E50E24DCCA9E'; 
 }
 
-/// Коды операций (OpCodes)[cite: 4]
 class BleOpCode {
-  // Оператор -> Донгл
   static const int cmdSetIdentity = 0x01;
   static const int cmdSetSysConfig = 0x02;
   static const int cmdActionReset = 0x03;
@@ -29,39 +26,26 @@ class BleOpCode {
   static const int cmdReqIdentity = 0x06;
   static const int cmdReqSysConfig = 0x07;
 
-  // Донгл -> Оператор
   static const int evtMyStatus = 0x10;
   static const int evtNodeUpdate = 0x11;
   static const int evtIdentity = 0x12;
   static const int evtSysConfig = 0x13;
 }
 
-/// Вспомогательная функция для парсинга строк (char[12]).
-/// Читает строку из массива байтов и обрезает её по первому встречному нулевому байту (\0).[cite: 4]
 String _parseNullTerminatedString(Uint8List bytes, int offset, int length) {
   final sublist = bytes.sublist(offset, offset + length);
-  int nullIndex = sublist.indexOf(0); // Ищем нулевой байт
+  int nullIndex = sublist.indexOf(0);
   if (nullIndex == -1) nullIndex = length;
   return utf8.decode(sublist.sublist(0, nullIndex), allowMalformed: true);
 }
 
-// ==========================================================
-// СТРУКТУРЫ ДАННЫХ
-// ==========================================================
-
-/// Пакет: Идентификация (Размер: 15 байт)[cite: 4]
 class BleIdentity {
   final int opCode;
   final int myNodeId;
   final String myName;
   final int myRole;
 
-  BleIdentity({
-    required this.opCode,
-    required this.myNodeId,
-    required this.myName,
-    required this.myRole,
-  });
+  BleIdentity({required this.opCode, required this.myNodeId, required this.myName, required this.myRole});
 
   factory BleIdentity.fromBytes(List<int> bytes) {
     if (bytes.length < 15) throw Exception('BleIdentity: Неверная длина пакета');
@@ -77,7 +61,6 @@ class BleIdentity {
   }
 }
 
-/// Пакет: Системные Настройки (Размер: 17 байт)[cite: 4]
 class BleSysConfig {
   final int opCode;
   final int txIntervalMoving;
@@ -85,13 +68,7 @@ class BleSysConfig {
   final int nodeConnectionTimeout;
   final int nodeActiveTimeoutMs;
 
-  BleSysConfig({
-    required this.opCode,
-    required this.txIntervalMoving,
-    required this.txIntervalStill,
-    required this.nodeConnectionTimeout,
-    required this.nodeActiveTimeoutMs,
-  });
+  BleSysConfig({required this.opCode, required this.txIntervalMoving, required this.txIntervalStill, required this.nodeConnectionTimeout, required this.nodeActiveTimeoutMs});
 
   factory BleSysConfig.fromBytes(List<int> bytes) {
     if (bytes.length < 17) throw Exception('BleSysConfig: Неверная длина пакета');
@@ -99,7 +76,6 @@ class BleSysConfig {
 
     return BleSysConfig(
       opCode: byteData.getUint8(0),
-      // Обязательное чтение в формате Little Endian согласно спецификации C++[cite: 4]
       txIntervalMoving: byteData.getUint32(1, Endian.little),
       txIntervalStill: byteData.getUint32(5, Endian.little),
       nodeConnectionTimeout: byteData.getUint32(9, Endian.little),
@@ -108,7 +84,6 @@ class BleSysConfig {
   }
 }
 
-/// Пакет: Обновление Узла (Размер: 39 байт)[cite: 4]
 class BleEvtNodeUpdate {
   final int opCode;
   final int nodeId;
@@ -121,18 +96,7 @@ class BleEvtNodeUpdate {
   final double snr;
   final int lastSeenAge;
 
-  BleEvtNodeUpdate({
-    required this.opCode,
-    required this.nodeId,
-    required this.nodeRole,
-    required this.nodeName,
-    required this.lat,
-    required this.lon,
-    required this.distance,
-    required this.azimuth,
-    required this.snr,
-    required this.lastSeenAge,
-  });
+  BleEvtNodeUpdate({required this.opCode, required this.nodeId, required this.nodeRole, required this.nodeName, required this.lat, required this.lon, required this.distance, required this.azimuth, required this.snr, required this.lastSeenAge});
 
   factory BleEvtNodeUpdate.fromBytes(List<int> bytes) {
     if (bytes.length < 39) throw Exception('BleEvtNodeUpdate: Неверная длина пакета');
@@ -154,7 +118,6 @@ class BleEvtNodeUpdate {
   }
 }
 
-/// Пакет: Статус Донгла (Размер: 5 байт)[cite: 4]
 class BleEvtMyStatus {
   final int opCode;
   final int gpsValid;
@@ -162,13 +125,7 @@ class BleEvtMyStatus {
   final int batteryPercent;
   final int txQueueSize;
 
-  BleEvtMyStatus({
-    required this.opCode,
-    required this.gpsValid,
-    required this.satellites,
-    required this.batteryPercent,
-    required this.txQueueSize,
-  });
+  BleEvtMyStatus({required this.opCode, required this.gpsValid, required this.satellites, required this.batteryPercent, required this.txQueueSize});
 
   factory BleEvtMyStatus.fromBytes(List<int> bytes) {
     if (bytes.length < 5) throw Exception('BleEvtMyStatus: Неверная длина пакета');

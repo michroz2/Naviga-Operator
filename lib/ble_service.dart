@@ -1,9 +1,8 @@
 /*
  * Файл: ble_service.dart
- * Версия: 1.3
- * Изменения: Добавлена функция отправки команд (write) и первичный парсинг входящих пакетов.
+ * Версия: 1.5
+ * Изменения: Разделена логика сканирования и подключения. Добавлен сбор списка устройств с фильтрацией и сортировкой по RSSI.
  * Описание: Класс-синглтон для управления модулем Bluetooth.
- *           Осуществляет поиск, подключение, подписку на TX и отправку базовых команд в RX.
  */
 
 import 'dart:async';
@@ -22,35 +21,57 @@ class BleService {
 
   StreamSubscription<List<ScanResult>>? _scanSubscription;
 
-  Future<void> scanAndConnect() async {
+  final ValueNotifier<bool> isScanning = ValueNotifier(false);
+  final ValueNotifier<bool> isConnected = ValueNotifier(false);
+  // Новый уведомитель для списка найденных устройств
+  final ValueNotifier<List<ScanResult>> scanResultsNotifier = ValueNotifier([]);
+  
+  final ValueNotifier<BleIdentity?> identityNotifier = ValueNotifier(null);
+  final ValueNotifier<BleSysConfig?> sysConfigNotifier = ValueNotifier(null);
+
+  /// Запуск сканирования (без автоматического подключения)
+  Future<void> startScan() async {
     await _scanSubscription?.cancel();
+    scanResultsNotifier.value = []; // Очищаем старый список
+    isScanning.value = true;
     debugPrint('Запуск сканирования BLE...');
     
     await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
 
-    _scanSubscription = FlutterBluePlus.scanResults.listen((results) async {
-      for (ScanResult r in results) {
+    _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
+      // Фильтруем устройства по префиксу "Naviga-"
+      List<ScanResult> navigaDevices = results.where((r) {
         String deviceName = r.device.platformName.isEmpty ? r.device.advName : r.device.platformName;
+        return deviceName.startsWith(BleConfig.deviceNamePrefix);
+      }).toList();
 
-        if (deviceName.startsWith(BleConfig.deviceNamePrefix)) {
-          debugPrint('Найдено устройство Naviga: $deviceName (MAC: ${r.device.remoteId})');
-          await FlutterBluePlus.stopScan();
-          await _connectToDevice(r.device);
-          break;
-        }
-      }
+      // Сортируем по силе сигнала (от сильного к слабому: -50 сильнее, чем -90)
+      navigaDevices.sort((a, b) => b.rssi.compareTo(a.rssi));
+
+      // Обновляем UI
+      scanResultsNotifier.value = navigaDevices;
+    });
+
+    Future.delayed(const Duration(seconds: 15), () {
+      if (isScanning.value) isScanning.value = false;
     });
   }
 
-  Future<void> _connectToDevice(BluetoothDevice device) async {
+  /// Ручное подключение к выбранному устройству из списка
+  Future<void> connectToDevice(BluetoothDevice device) async {
+    // Останавливаем сканирование перед подключением
+    await FlutterBluePlus.stopScan();
+    isScanning.value = false;
+
     try {
       debugPrint('Попытка подключения к ${device.remoteId}...');
       await device.connect(license: License.free, autoConnect: false);
       _connectedDevice = device;
+      isConnected.value = true;
       debugPrint('Успешное подключение!');
 
       if (defaultTargetPlatform == TargetPlatform.android) {
-        await device.requestMtu(128); // MTU 128 с запасом[cite: 4]
+        await device.requestMtu(128);
       }
 
       List<BluetoothService> services = await device.discoverServices();
@@ -72,7 +93,6 @@ class BleService {
         _txCharacteristic!.lastValueStream.listen(_handleIncomingData);
         debugPrint('Подписка на TX успешно оформлена.');
 
-        // Запуск сценария UC-04: Запрашиваем Identity[cite: 1, 4]
         _requestIdentity();
 
       } else {
@@ -80,14 +100,13 @@ class BleService {
       }
     } catch (e) {
       debugPrint('Ошибка при подключении: $e');
+      isConnected.value = false;
     }
   }
 
-  /// Отправка массива байт в RX-характеристику Донгла
   Future<void> _sendCommand(List<int> data) async {
     if (_rxCharacteristic == null) return;
     try {
-      // Используем withoutResponse, если характеристика это поддерживает[cite: 4]
       bool withoutResp = _rxCharacteristic!.properties.writeWithoutResponse;
       await _rxCharacteristic!.write(data, withoutResponse: withoutResp);
       debugPrint('>>> Отправлено в RX: $data');
@@ -96,19 +115,16 @@ class BleService {
     }
   }
 
-  /// Запрос идентификации (Имя, Роль, ID)[cite: 4]
   void _requestIdentity() {
     debugPrint('Запрос Identity (OpCode 0x06)...');
     _sendCommand([BleOpCode.cmdReqIdentity]);
   }
 
-  /// Запрос системных настроек (Таймеры)[cite: 4]
   void _requestSysConfig() {
     debugPrint('Запрос SysConfig (OpCode 0x07)...');
     _sendCommand([BleOpCode.cmdReqSysConfig]);
   }
 
-  /// Обработчик входящих байтов из потока NOTIFY
   void _handleIncomingData(List<int> data) {
     if (data.isEmpty) return;
     
@@ -117,21 +133,17 @@ class BleService {
     try {
       if (opCode == BleOpCode.evtIdentity) {
         final identity = BleIdentity.fromBytes(data);
-        debugPrint('<<< Получен EVT_IDENTITY: ID=${identity.myNodeId}, Имя=${identity.myName}, Роль=${identity.myRole}');
-        
-        // После получения Identity сразу запрашиваем таймеры[cite: 4]
+        debugPrint('<<< Получен EVT_IDENTITY: ID=${identity.myNodeId}');
+        identityNotifier.value = identity; 
         _requestSysConfig();
       } 
       else if (opCode == BleOpCode.evtSysConfig) {
         final config = BleSysConfig.fromBytes(data);
-        debugPrint('<<< Получен EVT_SYS_CONFIG: Moving=${config.txIntervalMoving}мс, Still=${config.txIntervalStill}мс');
-        debugPrint('--- СОПРЯЖЕНИЕ УСПЕШНО ЗАВЕРШЕНО ---');
-      } 
-      else {
-        debugPrint('<<< Получен неизвестный/другой пакет (OpCode: 0x${opCode.toRadixString(16)}, Размер: ${data.length} байт)');
+        debugPrint('<<< Получен EVT_SYS_CONFIG: Moving=${config.txIntervalMoving}мс');
+        sysConfigNotifier.value = config; 
       }
     } catch (e) {
-      debugPrint('Ошибка парсинга пакета 0x${opCode.toRadixString(16)}: $e');
+      debugPrint('Ошибка парсинга пакета: $e');
     }
   }
 
@@ -140,6 +152,13 @@ class BleService {
     _connectedDevice = null;
     _rxCharacteristic = null;
     _txCharacteristic = null;
+    
+    isConnected.value = false;
+    isScanning.value = false;
+    scanResultsNotifier.value = []; // Очищаем список после отключения
+    identityNotifier.value = null;
+    sysConfigNotifier.value = null;
+    
     debugPrint('Устройство отключено');
   }
 }
