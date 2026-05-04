@@ -1,7 +1,7 @@
 /*
  * Файл: main.dart
- * Версия: 1.5
- * Изменения: UI адаптирован для отображения списка найденных Донглов с сортировкой по RSSI. Подключение осуществляется по нажатию на элемент списка.
+ * Версия: 1.7
+ * Изменения: Обновлен заголовок AppBar, на кнопку отключения выведено полное имя устройства.
  * Описание: Главный экран приложения.
  */
 
@@ -13,7 +13,7 @@ import 'ble_service.dart';
 
 void main() {
   print('\n=========================================');
-  print('===== ОПЕРАТОР START version 1.5 =====');
+  print('===== ОПЕРАТОР START version 1.7 =====');
   print('=========================================\n');
   
   runApp(const NavigaTestApp());
@@ -58,7 +58,8 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Naviga Setup'),
+        // ИСПРАВЛЕНИЕ: Выводим версию в заголовок
+        title: const Text('Naviga v1.7 Setup'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
@@ -70,15 +71,12 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
           )
         ],
       ),
-      // Используем ValueListenableBuilder на уровне body, чтобы переключать экраны
       body: ValueListenableBuilder<bool>(
         valueListenable: _bleService.isConnected,
         builder: (context, isConnected, child) {
           if (isConnected) {
-            // --- ЭКРАН 2: ПОДКЛЮЧЕНО (ОТОБРАЖЕНИЕ ДАННЫХ) ---
             return _buildConnectedView();
           } else {
-            // --- ЭКРАН 1: ПОИСК И СПИСОК УСТРОЙСТВ ---
             return _buildScanningView();
           }
         },
@@ -86,7 +84,6 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
     );
   }
 
-  // Виджет для состояния сканирования
   Widget _buildScanningView() {
     return Column(
       children: [
@@ -120,7 +117,6 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
                 itemCount: results.length,
                 itemBuilder: (context, index) {
                   final r = results[index];
-                  // Извлекаем имя для отображения в списке
                   String deviceName = r.device.platformName.isEmpty ? r.device.advName : r.device.platformName;
                   
                   return Card(
@@ -144,17 +140,17 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
     );
   }
 
-  // Виджет для состояния успешного подключения (Карточки)
   Widget _buildConnectedView() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // ИСПРАВЛЕНИЕ: Вывод полного имени Bluetooth-устройства на кнопку
           ElevatedButton.icon(
             onPressed: _bleService.disconnect,
             icon: const Icon(Icons.bluetooth_disabled),
-            label: const Text('Отключить Донгл'),
+            label: Text('Отключить ${_bleService.connectedDeviceName.value}'),
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 15),
               backgroundColor: Colors.red.shade100,
@@ -162,10 +158,49 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
           ),
           const SizedBox(height: 20),
           
+          ValueListenableBuilder<BleEvtMyStatus?>(
+            valueListenable: _bleService.myStatusNotifier,
+            builder: (context, status, child) {
+              if (status == null) {
+                return const Card(
+                  elevation: 4,
+                  child: Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Text('Ожидание данных телеметрии...', style: TextStyle(fontStyle: FontStyle.italic)),
+                  ),
+                );
+              }
+              return Card(
+                elevation: 4,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.speed, color: Colors.blueGrey),
+                          SizedBox(width: 8),
+                          Text('Телеметрия Донгла', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      const Divider(),
+                      Text('Батарея: ${status.batteryPercent}%', style: const TextStyle(fontSize: 16)),
+                      Text('GPS: ${status.gpsValid == 1 ? 'Зафиксирован' : 'Поиск...'}', style: const TextStyle(fontSize: 16)),
+                      Text('Спутники: ${status.satellites}', style: const TextStyle(fontSize: 16)),
+                      Text('Очередь отправки (LoRa): ${status.txQueueSize}', style: const TextStyle(fontSize: 16)),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 10),
+
           ValueListenableBuilder<BleIdentity?>(
             valueListenable: _bleService.identityNotifier,
             builder: (context, identity, child) {
-              if (identity == null) return const Center(child: CircularProgressIndicator());
+              if (identity == null) return const SizedBox.shrink();
               return Card(
                 elevation: 4,
                 child: Padding(

@@ -1,7 +1,7 @@
 /*
  * Файл: ble_service.dart
- * Версия: 1.5
- * Изменения: Разделена логика сканирования и подключения. Добавлен сбор списка устройств с фильтрацией и сортировкой по RSSI.
+ * Версия: 1.7
+ * Изменения: Добавлено сохранение имени подключенного устройства (connectedDeviceName) для вывода в UI.
  * Описание: Класс-синглтон для управления модулем Bluetooth.
  */
 
@@ -23,32 +23,30 @@ class BleService {
 
   final ValueNotifier<bool> isScanning = ValueNotifier(false);
   final ValueNotifier<bool> isConnected = ValueNotifier(false);
-  // Новый уведомитель для списка найденных устройств
   final ValueNotifier<List<ScanResult>> scanResultsNotifier = ValueNotifier([]);
+  
+  // Добавлено хранение полного имени Bluetooth для интерфейса
+  final ValueNotifier<String> connectedDeviceName = ValueNotifier('');
   
   final ValueNotifier<BleIdentity?> identityNotifier = ValueNotifier(null);
   final ValueNotifier<BleSysConfig?> sysConfigNotifier = ValueNotifier(null);
+  final ValueNotifier<BleEvtMyStatus?> myStatusNotifier = ValueNotifier(null);
 
-  /// Запуск сканирования (без автоматического подключения)
   Future<void> startScan() async {
     await _scanSubscription?.cancel();
-    scanResultsNotifier.value = []; // Очищаем старый список
+    scanResultsNotifier.value = []; 
     isScanning.value = true;
     debugPrint('Запуск сканирования BLE...');
     
     await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
 
     _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
-      // Фильтруем устройства по префиксу "Naviga-"
       List<ScanResult> navigaDevices = results.where((r) {
         String deviceName = r.device.platformName.isEmpty ? r.device.advName : r.device.platformName;
         return deviceName.startsWith(BleConfig.deviceNamePrefix);
       }).toList();
 
-      // Сортируем по силе сигнала (от сильного к слабому: -50 сильнее, чем -90)
       navigaDevices.sort((a, b) => b.rssi.compareTo(a.rssi));
-
-      // Обновляем UI
       scanResultsNotifier.value = navigaDevices;
     });
 
@@ -57,9 +55,7 @@ class BleService {
     });
   }
 
-  /// Ручное подключение к выбранному устройству из списка
   Future<void> connectToDevice(BluetoothDevice device) async {
-    // Останавливаем сканирование перед подключением
     await FlutterBluePlus.stopScan();
     isScanning.value = false;
 
@@ -67,7 +63,11 @@ class BleService {
       debugPrint('Попытка подключения к ${device.remoteId}...');
       await device.connect(license: License.free, autoConnect: false);
       _connectedDevice = device;
+      
+      // Сохраняем имя устройства перед тем, как уведомить UI о подключении
+      connectedDeviceName.value = device.platformName.isEmpty ? device.advName : device.platformName;
       isConnected.value = true;
+      
       debugPrint('Успешное подключение!');
 
       if (defaultTargetPlatform == TargetPlatform.android) {
@@ -142,8 +142,13 @@ class BleService {
         debugPrint('<<< Получен EVT_SYS_CONFIG: Moving=${config.txIntervalMoving}мс');
         sysConfigNotifier.value = config; 
       }
+      else if (opCode == BleOpCode.evtMyStatus) {
+        final status = BleEvtMyStatus.fromBytes(data);
+        debugPrint('<<< Получен EVT_MY_STATUS: Батарея=${status.batteryPercent}%, GPS=${status.gpsValid}, Спутники=${status.satellites}');
+        myStatusNotifier.value = status;
+      }
     } catch (e) {
-      debugPrint('Ошибка парсинга пакета: $e');
+      debugPrint('Ошибка парсинга пакета 0x${opCode.toRadixString(16)}: $e');
     }
   }
 
@@ -155,9 +160,11 @@ class BleService {
     
     isConnected.value = false;
     isScanning.value = false;
-    scanResultsNotifier.value = []; // Очищаем список после отключения
+    connectedDeviceName.value = ''; // Сбрасываем имя
+    scanResultsNotifier.value = [];
     identityNotifier.value = null;
     sysConfigNotifier.value = null;
+    myStatusNotifier.value = null;
     
     debugPrint('Устройство отключено');
   }
