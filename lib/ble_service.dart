@@ -1,7 +1,7 @@
 /*
  * Файл: ble_service.dart
- * Версия: 1.7
- * Изменения: Добавлено сохранение имени подключенного устройства (connectedDeviceName) для вывода в UI.
+ * Версия: 1.8
+ * Изменения: Обновлен парсинг пакета EVT_MY_STATUS для поддержки поля batteryVoltage.
  * Описание: Класс-синглтон для управления модулем Bluetooth.
  */
 
@@ -25,7 +25,6 @@ class BleService {
   final ValueNotifier<bool> isConnected = ValueNotifier(false);
   final ValueNotifier<List<ScanResult>> scanResultsNotifier = ValueNotifier([]);
   
-  // Добавлено хранение полного имени Bluetooth для интерфейса
   final ValueNotifier<String> connectedDeviceName = ValueNotifier('');
   
   final ValueNotifier<BleIdentity?> identityNotifier = ValueNotifier(null);
@@ -64,7 +63,6 @@ class BleService {
       await device.connect(license: License.free, autoConnect: false);
       _connectedDevice = device;
       
-      // Сохраняем имя устройства перед тем, как уведомить UI о подключении
       connectedDeviceName.value = device.platformName.isEmpty ? device.advName : device.platformName;
       isConnected.value = true;
       
@@ -144,7 +142,7 @@ class BleService {
       }
       else if (opCode == BleOpCode.evtMyStatus) {
         final status = BleEvtMyStatus.fromBytes(data);
-        debugPrint('<<< Получен EVT_MY_STATUS: Батарея=${status.batteryPercent}%, GPS=${status.gpsValid}, Спутники=${status.satellites}');
+        debugPrint('<<< Получен EVT_MY_STATUS: Батарея=${status.batteryPercent}% (${status.batteryVoltage} мВ), GPS=${status.gpsValid}, Спутники=${status.satellites}');
         myStatusNotifier.value = status;
       }
     } catch (e) {
@@ -160,7 +158,7 @@ class BleService {
     
     isConnected.value = false;
     isScanning.value = false;
-    connectedDeviceName.value = ''; // Сбрасываем имя
+    connectedDeviceName.value = '';
     scanResultsNotifier.value = [];
     identityNotifier.value = null;
     sysConfigNotifier.value = null;

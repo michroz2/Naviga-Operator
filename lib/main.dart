@@ -1,7 +1,7 @@
 /*
  * Файл: main.dart
- * Версия: 1.7
- * Изменения: Обновлен заголовок AppBar, на кнопку отключения выведено полное имя устройства.
+ * Версия: 1.8
+ * Изменения: Обновлено отображение карточки телеметрии (вывод напряжения в Вольтах вместо размера очереди).
  * Описание: Главный экран приложения.
  */
 
@@ -13,7 +13,7 @@ import 'ble_service.dart';
 
 void main() {
   print('\n=========================================');
-  print('===== ОПЕРАТОР START version 1.7 =====');
+  print('===== ОПЕРАТОР START version 1.8 =====');
   print('=========================================\n');
   
   runApp(const NavigaTestApp());
@@ -58,8 +58,7 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        // ИСПРАВЛЕНИЕ: Выводим версию в заголовок
-        title: const Text('Naviga v1.7 Setup'),
+        title: const Text('Naviga v1.8 Setup'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
@@ -146,7 +145,6 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ИСПРАВЛЕНИЕ: Вывод полного имени Bluetooth-устройства на кнопку
           ElevatedButton.icon(
             onPressed: _bleService.disconnect,
             icon: const Icon(Icons.bluetooth_disabled),
@@ -185,10 +183,10 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
                         ],
                       ),
                       const Divider(),
-                      Text('Батарея: ${status.batteryPercent}%', style: const TextStyle(fontSize: 16)),
+                      // ИСПРАВЛЕНИЕ: Вывод процентов и напряжения в Вольтах
+                      Text('Батарея: ${status.batteryPercent}% (${(status.batteryVoltage / 1000).toStringAsFixed(2)} В)', style: const TextStyle(fontSize: 16)),
                       Text('GPS: ${status.gpsValid == 1 ? 'Зафиксирован' : 'Поиск...'}', style: const TextStyle(fontSize: 16)),
                       Text('Спутники: ${status.satellites}', style: const TextStyle(fontSize: 16)),
-                      Text('Очередь отправки (LoRa): ${status.txQueueSize}', style: const TextStyle(fontSize: 16)),
                     ],
                   ),
                 ),

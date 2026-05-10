@@ -1,16 +1,14 @@
 /*
  * Файл: ble_protocol.dart
- * Версия: 1.5
- * Изменения: Изменен префикс имени устройства согласно спецификации 1.32 (Naviga-XXXX).
+ * Версия: 1.8
+ * Изменения: Обновлена структура BleEvtMyStatus согласно спецификации 1.34 (добавлено batteryVoltage, удалено txQueueSize).
  * Описание: Содержит константы UUID, коды операций и дата-классы для парсинга бинарных структур.
  */
 
 import 'dart:convert';
 import 'dart:typed_data';
 
-/// Константы BLE (UUID)[cite: 1]
 class BleConfig {
-  // ИСПРАВЛЕНИЕ: Теперь ищем только по префиксу, так как имя содержит MAC[cite: 1]
   static const String deviceNamePrefix = 'Naviga-';
   static const String serviceUuid = '6E400001-B5A3-F393-E0A9-E50E24DCCA9E';
   static const String rxCharacteristicUuid = '6E400002-B5A3-F393-E0A9-E50E24DCCA9E'; 
@@ -123,12 +121,12 @@ class BleEvtMyStatus {
   final int gpsValid;
   final int satellites;
   final int batteryPercent;
-  final int txQueueSize;
+  final int batteryVoltage;
 
-  BleEvtMyStatus({required this.opCode, required this.gpsValid, required this.satellites, required this.batteryPercent, required this.txQueueSize});
+  BleEvtMyStatus({required this.opCode, required this.gpsValid, required this.satellites, required this.batteryPercent, required this.batteryVoltage});
 
   factory BleEvtMyStatus.fromBytes(List<int> bytes) {
-    if (bytes.length < 5) throw Exception('BleEvtMyStatus: Неверная длина пакета');
+    if (bytes.length < 6) throw Exception('BleEvtMyStatus: Неверная длина пакета');
     final byteData = ByteData.sublistView(Uint8List.fromList(bytes));
 
     return BleEvtMyStatus(
@@ -136,7 +134,7 @@ class BleEvtMyStatus {
       gpsValid: byteData.getUint8(1),
       satellites: byteData.getUint8(2),
       batteryPercent: byteData.getUint8(3),
-      txQueueSize: byteData.getUint8(4),
+      batteryVoltage: byteData.getUint16(4, Endian.little),
     );
   }
 }
