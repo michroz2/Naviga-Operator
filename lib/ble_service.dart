@@ -1,7 +1,7 @@
 /*
  * Файл: ble_service.dart
- * Версия: 1.10
- * Изменения: Метод setIdentity адаптирован под отправку 27-байтового пакета (смещение роли на 26, ограничение строки 23 байтами).
+ * Версия: 1.11
+ * Изменения: Добавлен метод setSysConfig для отправки пакета CMD_SET_SYS_CONFIG (0x02).
  * Описание: Класс-синглтон для управления модулем Bluetooth.
  */
 
@@ -69,7 +69,6 @@ class BleService {
       
       debugPrint('Успешное подключение!');
 
-      // MTU 128 с запасом покрывает новый максимальный размер в 51 байт
       if (defaultTargetPlatform == TargetPlatform.android) {
         await device.requestMtu(128); 
       }
@@ -128,45 +127,63 @@ class BleService {
   Future<void> setIdentity(int nodeId, String name, int role) async {
     debugPrint('Отправка новых настроек Identity (OpCode 0x01)...');
     try {
-      // Инициализируем массив ровно на 27 байт
       List<int> payload = List<int>.filled(27, 0);
-      
       payload[0] = BleOpCode.cmdSetIdentity; 
       payload[1] = nodeId;                   
 
-      // Конвертация имени в UTF-8
       List<int> nameBytes = utf8.encode(name);
       for (int i = 0; i < 24; i++) {
-        // Ограничиваем копирование 23 байтами, 24-й остается 0x00
         if (i < nameBytes.length && i < 23) { 
           payload[2 + i] = nameBytes[i];
         }
       }
-      
-      payload[26] = role; // Роль теперь на смещении 26
+      payload[26] = role;
 
       await _sendCommand(payload);
-      
       Future.delayed(const Duration(milliseconds: 300), () {
         _requestIdentity();
       });
-
     } catch (e) {
       debugPrint('Ошибка формирования пакета CMD_SET_IDENTITY: $e');
     }
   }
 
+  // --- НОВЫЙ МЕТОД: Сохранение Системных Таймеров ---
+  Future<void> setSysConfig({
+    required int txMoving,
+    required int txStill,
+    required int connTimeout,
+    required int activeTimeout,
+  }) async {
+    debugPrint('Отправка новых системных таймеров (OpCode 0x02)...');
+    try {
+      final payload = Uint8List(17);
+      final byteData = ByteData.view(payload.buffer);
+
+      byteData.setUint8(0, BleOpCode.cmdSetSysConfig); 
+      byteData.setUint32(1, txMoving, Endian.little);
+      byteData.setUint32(5, txStill, Endian.little);
+      byteData.setUint32(9, connTimeout, Endian.little);
+      byteData.setUint32(13, activeTimeout, Endian.little);
+
+      await _sendCommand(payload.toList());
+
+      Future.delayed(const Duration(milliseconds: 300), () {
+        _requestSysConfig();
+      });
+    } catch (e) {
+      debugPrint('Ошибка формирования пакета CMD_SET_SYS_CONFIG: $e');
+    }
+  }
+
   void _handleIncomingData(List<int> data) {
     if (data.isEmpty) return;
-    
     int opCode = data[0];
-    
     try {
       if (opCode == BleOpCode.evtIdentity) {
         final identity = BleIdentity.fromBytes(data);
-        debugPrint('<<< Получен EVT_IDENTITY: ID=${identity.myNodeId}, Имя=${identity.myName}, Роль=${identity.myRole}');
+        debugPrint('<<< Получен EVT_IDENTITY: ID=${identity.myNodeId}');
         identityNotifier.value = identity; 
-        
         if (sysConfigNotifier.value == null) {
           _requestSysConfig();
         }
@@ -191,7 +208,6 @@ class BleService {
     _connectedDevice = null;
     _rxCharacteristic = null;
     _txCharacteristic = null;
-    
     isConnected.value = false;
     isScanning.value = false;
     connectedDeviceName.value = '';
@@ -199,7 +215,6 @@ class BleService {
     identityNotifier.value = null;
     sysConfigNotifier.value = null;
     myStatusNotifier.value = null;
-    
     debugPrint('Устройство отключено');
   }
 }

@@ -1,7 +1,8 @@
 /*
  * Файл: main.dart
- * Версия: 1.10
- * Изменения: Добавлен кастомный форматтер Utf8ByteLengthFormatter для ограничения ввода в байтах (а не символах).
+ * Версия: 1.11
+ * Изменения: Добавлен EditSysConfigScreen для редактирования системных таймеров (UC-01). 
+ * Восстановлено полное именование переменных и методов.
  * Описание: Главный экран приложения.
  */
 
@@ -14,7 +15,7 @@ import 'ble_service.dart';
 
 void main() {
   print('\n=========================================');
-  print('===== ОПЕРАТОР START version 1.10 =====');
+  print('===== ОПЕРАТОР START version 1.11 =====');
   print('=========================================\n');
   
   runApp(const NavigaTestApp());
@@ -59,7 +60,7 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Naviga v1.10 Setup'),
+        title: const Text('Naviga v1.11 Setup'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
@@ -246,7 +247,23 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Системные Таймеры', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Системные Таймеры', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: Colors.blue),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => EditSysConfigScreen(config: config),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
                       const Divider(),
                       Text('Передача в движении: ${config.txIntervalMoving / 1000} сек', style: const TextStyle(fontSize: 16)),
                       Text('Передача на стоянке: ${config.txIntervalStill / 1000} сек', style: const TextStyle(fontSize: 16)),
@@ -269,15 +286,10 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
 // ============================================================================
 class Utf8ByteLengthFormatter extends TextInputFormatter {
   final int maxBytes;
-  
   Utf8ByteLengthFormatter(this.maxBytes);
-
   @override
   TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
-    // Если введенная строка в байтах превышает лимит, блокируем ввод
-    if (utf8.encode(newValue.text).length > maxBytes) {
-      return oldValue;
-    }
+    if (utf8.encode(newValue.text).length > maxBytes) return oldValue;
     return newValue;
   }
 }
@@ -287,9 +299,7 @@ class Utf8ByteLengthFormatter extends TextInputFormatter {
 // ============================================================================
 class EditIdentityScreen extends StatefulWidget {
   final BleIdentity currentIdentity;
-
   const EditIdentityScreen({super.key, required this.currentIdentity});
-
   @override
   State<EditIdentityScreen> createState() => _EditIdentityScreenState();
 }
@@ -304,23 +314,19 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
     super.initState();
     _nameController = TextEditingController(text: widget.currentIdentity.myName);
     _selectedRole = widget.currentIdentity.myRole;
-    
     if (_selectedRole < 0 || _selectedRole > 2) _selectedRole = 0;
   }
 
   @override
-  void dispose() {
-    _nameController.dispose();
-    super.dispose();
+  void dispose() { 
+    _nameController.dispose(); 
+    super.dispose(); 
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Редактирование узла'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-      ),
+      appBar: AppBar(title: const Text('Редактирование узла')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -328,22 +334,17 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
           children: [
             TextField(
               controller: _nameController,
-              inputFormatters: [
-                Utf8ByteLengthFormatter(23) // Максимум 23 байта (24-й зарезервирован под \0)
-              ],
+              inputFormatters: [Utf8ByteLengthFormatter(23)],
               decoration: const InputDecoration(
-                labelText: 'Имя устройства',
-                helperText: 'Допускается до 23 латинских букв или 11 русских',
+                labelText: 'Имя устройства', 
                 border: OutlineInputBorder(),
+                helperText: 'Допускается до 23 латинских букв или 11 русских',
               ),
             ),
             const SizedBox(height: 20),
             DropdownButtonFormField<int>(
               value: _selectedRole,
-              decoration: const InputDecoration(
-                labelText: 'Роль устройства',
-                border: OutlineInputBorder(),
-              ),
+              decoration: const InputDecoration(labelText: 'Роль устройства', border: OutlineInputBorder()),
               items: const [
                 DropdownMenuItem(value: 0, child: Text('Ретранслятор (Relay)')),
                 DropdownMenuItem(value: 1, child: Text('Сталкер (Stalker)')),
@@ -357,34 +358,104 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
                 }
               },
             ),
-            const SizedBox(height: 20),
-            Text('Локальный ID: ${widget.currentIdentity.myNodeId} (Только чтение)', 
-                 style: const TextStyle(fontSize: 16, color: Colors.grey)),
-            
             const Spacer(),
-            
             ElevatedButton(
               onPressed: () {
-                String newName = _nameController.text.trim();
-                if (newName.isEmpty) newName = "Naviga";
-                
-                _bleService.setIdentity(
-                  widget.currentIdentity.myNodeId, 
-                  newName, 
-                  _selectedRole
+                _bleService.setIdentity(widget.currentIdentity.myNodeId, _nameController.text, _selectedRole);
+                Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white),
+              child: const Text('СОХРАНИТЬ'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// ЭКРАН: Редактирование Системных Таймеров
+// ============================================================================
+class EditSysConfigScreen extends StatefulWidget {
+  final BleSysConfig config;
+  const EditSysConfigScreen({super.key, required this.config});
+  @override
+  State<EditSysConfigScreen> createState() => _EditSysConfigScreenState();
+}
+
+class _EditSysConfigScreenState extends State<EditSysConfigScreen> {
+  final BleService _bleService = BleService();
+  late TextEditingController _movingController;
+  late TextEditingController _stillController;
+  late TextEditingController _connTimeoutController;
+  late TextEditingController _activeTimeoutController;
+
+  @override
+  void initState() {
+    super.initState();
+    _movingController = TextEditingController(text: (widget.config.txIntervalMoving ~/ 1000).toString());
+    _stillController = TextEditingController(text: (widget.config.txIntervalStill ~/ 1000).toString());
+    _connTimeoutController = TextEditingController(text: (widget.config.nodeConnectionTimeout ~/ 1000).toString());
+    _activeTimeoutController = TextEditingController(text: (widget.config.nodeActiveTimeoutMs ~/ 1000).toString());
+  }
+
+  @override
+  void dispose() { 
+    _movingController.dispose(); 
+    _stillController.dispose(); 
+    _connTimeoutController.dispose(); 
+    _activeTimeoutController.dispose(); 
+    super.dispose(); 
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Настройка таймеров')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            _buildField('Интервал передачи (движение)', _movingController),
+            _buildField('Интервал передачи (стоянка)', _stillController),
+            _buildField('Таймаут потери связи', _connTimeoutController),
+            _buildField('Таймаут удаления из БД', _activeTimeoutController),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () {
+                _bleService.setSysConfig(
+                  txMoving: (int.tryParse(_movingController.text) ?? 30) * 1000,
+                  txStill: (int.tryParse(_stillController.text) ?? 300) * 1000,
+                  connTimeout: (int.tryParse(_connTimeoutController.text) ?? 600) * 1000,
+                  activeTimeout: (int.tryParse(_activeTimeoutController.text) ?? 3600) * 1000,
                 );
-                
                 Navigator.pop(context);
               },
               style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 15),
-                backgroundColor: Colors.blueAccent,
+                minimumSize: const Size.fromHeight(50), 
+                backgroundColor: Colors.blueAccent, 
                 foregroundColor: Colors.white,
               ),
-              child: const Text('СОХРАНИТЬ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              child: const Text('СОХРАНИТЬ ТАЙМЕРЫ'),
             ),
-            const SizedBox(height: 20),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildField(String label, TextEditingController controller) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: TextField(
+        controller: controller, 
+        keyboardType: TextInputType.number, 
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly], 
+        decoration: InputDecoration(
+          labelText: label, 
+          suffixText: 'сек', 
+          border: const OutlineInputBorder(),
         ),
       ),
     );
