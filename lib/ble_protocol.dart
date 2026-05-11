@@ -1,7 +1,7 @@
 /*
  * Файл: ble_protocol.dart
- * Версия: 1.8
- * Изменения: Обновлена структура BleEvtMyStatus согласно спецификации 1.34 (добавлено batteryVoltage, удалено txQueueSize).
+ * Версия: 1.10
+ * Изменения: Обновлены структуры BleIdentity и BleEvtNodeUpdate под контракт v1.38 (буферы строк расширены до 24 байт, смещены offset'ы).
  * Описание: Содержит константы UUID, коды операций и дата-классы для парсинга бинарных структур.
  */
 
@@ -46,15 +46,15 @@ class BleIdentity {
   BleIdentity({required this.opCode, required this.myNodeId, required this.myName, required this.myRole});
 
   factory BleIdentity.fromBytes(List<int> bytes) {
-    if (bytes.length < 15) throw Exception('BleIdentity: Неверная длина пакета');
+    if (bytes.length < 27) throw Exception('BleIdentity: Неверная длина пакета (ожидается 27)');
     final byteData = ByteData.sublistView(Uint8List.fromList(bytes));
     final rawBytes = Uint8List.fromList(bytes);
 
     return BleIdentity(
       opCode: byteData.getUint8(0),
       myNodeId: byteData.getUint8(1),
-      myName: _parseNullTerminatedString(rawBytes, 2, 12),
-      myRole: byteData.getUint8(14),
+      myName: _parseNullTerminatedString(rawBytes, 2, 24), // Длина строки теперь 24
+      myRole: byteData.getUint8(26),                       // Смещение роли теперь 26
     );
   }
 }
@@ -97,7 +97,7 @@ class BleEvtNodeUpdate {
   BleEvtNodeUpdate({required this.opCode, required this.nodeId, required this.nodeRole, required this.nodeName, required this.lat, required this.lon, required this.distance, required this.azimuth, required this.snr, required this.lastSeenAge});
 
   factory BleEvtNodeUpdate.fromBytes(List<int> bytes) {
-    if (bytes.length < 39) throw Exception('BleEvtNodeUpdate: Неверная длина пакета');
+    if (bytes.length < 51) throw Exception('BleEvtNodeUpdate: Неверная длина пакета (ожидается 51)');
     final byteData = ByteData.sublistView(Uint8List.fromList(bytes));
     final rawBytes = Uint8List.fromList(bytes);
 
@@ -105,13 +105,13 @@ class BleEvtNodeUpdate {
       opCode: byteData.getUint8(0),
       nodeId: byteData.getUint8(1),
       nodeRole: byteData.getUint8(2),
-      nodeName: _parseNullTerminatedString(rawBytes, 3, 12),
-      lat: byteData.getFloat32(15, Endian.little),
-      lon: byteData.getFloat32(19, Endian.little),
-      distance: byteData.getFloat32(23, Endian.little),
-      azimuth: byteData.getFloat32(27, Endian.little),
-      snr: byteData.getFloat32(31, Endian.little),
-      lastSeenAge: byteData.getUint32(35, Endian.little),
+      nodeName: _parseNullTerminatedString(rawBytes, 3, 24), // Длина 24
+      lat: byteData.getFloat32(27, Endian.little),           // Все float смещены на +12 байт
+      lon: byteData.getFloat32(31, Endian.little),
+      distance: byteData.getFloat32(35, Endian.little),
+      azimuth: byteData.getFloat32(39, Endian.little),
+      snr: byteData.getFloat32(43, Endian.little),
+      lastSeenAge: byteData.getUint32(47, Endian.little),
     );
   }
 }

@@ -1,11 +1,12 @@
 /*
  * Файл: ble_service.dart
- * Версия: 1.8
- * Изменения: Обновлен парсинг пакета EVT_MY_STATUS для поддержки поля batteryVoltage.
+ * Версия: 1.10
+ * Изменения: Метод setIdentity адаптирован под отправку 27-байтового пакета (смещение роли на 26, ограничение строки 23 байтами).
  * Описание: Класс-синглтон для управления модулем Bluetooth.
  */
 
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'ble_protocol.dart';
@@ -68,8 +69,9 @@ class BleService {
       
       debugPrint('Успешное подключение!');
 
+      // MTU 128 с запасом покрывает новый максимальный размер в 51 байт
       if (defaultTargetPlatform == TargetPlatform.android) {
-        await device.requestMtu(128);
+        await device.requestMtu(128); 
       }
 
       List<BluetoothService> services = await device.discoverServices();
@@ -123,6 +125,37 @@ class BleService {
     _sendCommand([BleOpCode.cmdReqSysConfig]);
   }
 
+  Future<void> setIdentity(int nodeId, String name, int role) async {
+    debugPrint('Отправка новых настроек Identity (OpCode 0x01)...');
+    try {
+      // Инициализируем массив ровно на 27 байт
+      List<int> payload = List<int>.filled(27, 0);
+      
+      payload[0] = BleOpCode.cmdSetIdentity; 
+      payload[1] = nodeId;                   
+
+      // Конвертация имени в UTF-8
+      List<int> nameBytes = utf8.encode(name);
+      for (int i = 0; i < 24; i++) {
+        // Ограничиваем копирование 23 байтами, 24-й остается 0x00
+        if (i < nameBytes.length && i < 23) { 
+          payload[2 + i] = nameBytes[i];
+        }
+      }
+      
+      payload[26] = role; // Роль теперь на смещении 26
+
+      await _sendCommand(payload);
+      
+      Future.delayed(const Duration(milliseconds: 300), () {
+        _requestIdentity();
+      });
+
+    } catch (e) {
+      debugPrint('Ошибка формирования пакета CMD_SET_IDENTITY: $e');
+    }
+  }
+
   void _handleIncomingData(List<int> data) {
     if (data.isEmpty) return;
     
@@ -131,9 +164,12 @@ class BleService {
     try {
       if (opCode == BleOpCode.evtIdentity) {
         final identity = BleIdentity.fromBytes(data);
-        debugPrint('<<< Получен EVT_IDENTITY: ID=${identity.myNodeId}');
+        debugPrint('<<< Получен EVT_IDENTITY: ID=${identity.myNodeId}, Имя=${identity.myName}, Роль=${identity.myRole}');
         identityNotifier.value = identity; 
-        _requestSysConfig();
+        
+        if (sysConfigNotifier.value == null) {
+          _requestSysConfig();
+        }
       } 
       else if (opCode == BleOpCode.evtSysConfig) {
         final config = BleSysConfig.fromBytes(data);
@@ -142,7 +178,7 @@ class BleService {
       }
       else if (opCode == BleOpCode.evtMyStatus) {
         final status = BleEvtMyStatus.fromBytes(data);
-        debugPrint('<<< Получен EVT_MY_STATUS: Батарея=${status.batteryPercent}% (${status.batteryVoltage} мВ), GPS=${status.gpsValid}, Спутники=${status.satellites}');
+        debugPrint('<<< Получен EVT_MY_STATUS: Батарея=${status.batteryPercent}% (${status.batteryVoltage} мВ)');
         myStatusNotifier.value = status;
       }
     } catch (e) {

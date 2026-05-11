@@ -1,10 +1,11 @@
 /*
  * Файл: main.dart
- * Версия: 1.8
- * Изменения: Обновлено отображение карточки телеметрии (вывод напряжения в Вольтах вместо размера очереди).
+ * Версия: 1.10
+ * Изменения: Добавлен кастомный форматтер Utf8ByteLengthFormatter для ограничения ввода в байтах (а не символах).
  * Описание: Главный экран приложения.
  */
 
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -13,7 +14,7 @@ import 'ble_service.dart';
 
 void main() {
   print('\n=========================================');
-  print('===== ОПЕРАТОР START version 1.8 =====');
+  print('===== ОПЕРАТОР START version 1.10 =====');
   print('=========================================\n');
   
   runApp(const NavigaTestApp());
@@ -58,7 +59,7 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Naviga v1.8 Setup'),
+        title: const Text('Naviga v1.10 Setup'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
@@ -183,7 +184,6 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
                         ],
                       ),
                       const Divider(),
-                      // ИСПРАВЛЕНИЕ: Вывод процентов и напряжения в Вольтах
                       Text('Батарея: ${status.batteryPercent}% (${(status.batteryVoltage / 1000).toStringAsFixed(2)} В)', style: const TextStyle(fontSize: 16)),
                       Text('GPS: ${status.gpsValid == 1 ? 'Зафиксирован' : 'Поиск...'}', style: const TextStyle(fontSize: 16)),
                       Text('Спутники: ${status.satellites}', style: const TextStyle(fontSize: 16)),
@@ -206,7 +206,23 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Идентификация Узла', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Идентификация Узла', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: Colors.blue),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => EditIdentityScreen(currentIdentity: identity),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
                       const Divider(),
                       Text('Имя: ${identity.myName}', style: const TextStyle(fontSize: 16)),
                       Text('Локальный ID: ${identity.myNodeId}', style: const TextStyle(fontSize: 16)),
@@ -243,6 +259,133 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// Вспомогательный класс: Ограничение длины строки в байтах UTF-8
+// ============================================================================
+class Utf8ByteLengthFormatter extends TextInputFormatter {
+  final int maxBytes;
+  
+  Utf8ByteLengthFormatter(this.maxBytes);
+
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    // Если введенная строка в байтах превышает лимит, блокируем ввод
+    if (utf8.encode(newValue.text).length > maxBytes) {
+      return oldValue;
+    }
+    return newValue;
+  }
+}
+
+// ============================================================================
+// ЭКРАН: Редактирование Идентификации (UC-01)
+// ============================================================================
+class EditIdentityScreen extends StatefulWidget {
+  final BleIdentity currentIdentity;
+
+  const EditIdentityScreen({super.key, required this.currentIdentity});
+
+  @override
+  State<EditIdentityScreen> createState() => _EditIdentityScreenState();
+}
+
+class _EditIdentityScreenState extends State<EditIdentityScreen> {
+  final BleService _bleService = BleService();
+  late TextEditingController _nameController;
+  late int _selectedRole;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.currentIdentity.myName);
+    _selectedRole = widget.currentIdentity.myRole;
+    
+    if (_selectedRole < 0 || _selectedRole > 2) _selectedRole = 0;
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Редактирование узла'),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _nameController,
+              inputFormatters: [
+                Utf8ByteLengthFormatter(23) // Максимум 23 байта (24-й зарезервирован под \0)
+              ],
+              decoration: const InputDecoration(
+                labelText: 'Имя устройства',
+                helperText: 'Допускается до 23 латинских букв или 11 русских',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 20),
+            DropdownButtonFormField<int>(
+              value: _selectedRole,
+              decoration: const InputDecoration(
+                labelText: 'Роль устройства',
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(value: 0, child: Text('Ретранслятор (Relay)')),
+                DropdownMenuItem(value: 1, child: Text('Сталкер (Stalker)')),
+                DropdownMenuItem(value: 2, child: Text('Трекер (Tracker)')),
+              ],
+              onChanged: (int? newValue) {
+                if (newValue != null) {
+                  setState(() {
+                    _selectedRole = newValue;
+                  });
+                }
+              },
+            ),
+            const SizedBox(height: 20),
+            Text('Локальный ID: ${widget.currentIdentity.myNodeId} (Только чтение)', 
+                 style: const TextStyle(fontSize: 16, color: Colors.grey)),
+            
+            const Spacer(),
+            
+            ElevatedButton(
+              onPressed: () {
+                String newName = _nameController.text.trim();
+                if (newName.isEmpty) newName = "Naviga";
+                
+                _bleService.setIdentity(
+                  widget.currentIdentity.myNodeId, 
+                  newName, 
+                  _selectedRole
+                );
+                
+                Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                backgroundColor: Colors.blueAccent,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('СОХРАНИТЬ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
       ),
     );
   }
