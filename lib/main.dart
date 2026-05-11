@@ -1,8 +1,7 @@
 /*
  * Файл: main.dart
- * Версия: 1.11
- * Изменения: Добавлен EditSysConfigScreen для редактирования системных таймеров (UC-01). 
- * Восстановлено полное именование переменных и методов.
+ * Версия: 1.12
+ * Изменения: На экран EditIdentityScreen добавлена опасная кнопка "Сброс к заводским настройкам" с диалогом подтверждения (UC-08).
  * Описание: Главный экран приложения.
  */
 
@@ -15,7 +14,7 @@ import 'ble_service.dart';
 
 void main() {
   print('\n=========================================');
-  print('===== ОПЕРАТОР START version 1.11 =====');
+  print('===== ОПЕРАТОР START version 1.12 =====');
   print('=========================================\n');
   
   runApp(const NavigaTestApp());
@@ -60,7 +59,7 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Naviga v1.11 Setup'),
+        title: const Text('Naviga v1.12 Setup'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
@@ -295,7 +294,7 @@ class Utf8ByteLengthFormatter extends TextInputFormatter {
 }
 
 // ============================================================================
-// ЭКРАН: Редактирование Идентификации (UC-01)
+// ЭКРАН: Редактирование Идентификации (UC-01 + UC-08)
 // ============================================================================
 class EditIdentityScreen extends StatefulWidget {
   final BleIdentity currentIdentity;
@@ -321,6 +320,36 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
   void dispose() { 
     _nameController.dispose(); 
     super.dispose(); 
+  }
+
+  // Диалог подтверждения Factory Reset
+  void _showResetDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext ctx) {
+        return AlertDialog(
+          title: const Text('Внимание!', style: TextStyle(color: Colors.red)),
+          content: const Text(
+            'Вы уверены? Это действие безвозвратно удалит все данные на Донгле, сбросит его Имя и Роль, а также разорвет текущее соединение.'
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(), // Отмена
+              child: const Text('ОТМЕНА'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(ctx).pop(); // Закрываем диалог
+                _bleService.factoryReset(); // Отправляем команду и рвем связь
+                Navigator.of(context).pop(); // Закрываем экран редактирования (возврат к сканированию)
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('СБРОСИТЬ'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -364,9 +393,29 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
                 _bleService.setIdentity(widget.currentIdentity.myNodeId, _nameController.text, _selectedRole);
                 Navigator.pop(context);
               },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white),
-              child: const Text('СОХРАНИТЬ'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                backgroundColor: Colors.blueAccent, 
+                foregroundColor: Colors.white
+              ),
+              child: const Text('СОХРАНИТЬ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ),
+            
+            // --- НОВАЯ КНОПКА СБРОСА (UC-08) ---
+            const SizedBox(height: 30),
+            const Divider(),
+            const SizedBox(height: 10),
+            ElevatedButton.icon(
+              onPressed: () => _showResetDialog(context),
+              icon: const Icon(Icons.warning_amber_rounded),
+              label: const Text('СБРОС К ЗАВОДСКИМ НАСТРОЙКАМ'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                backgroundColor: Colors.red.shade600,
+                foregroundColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 10),
           ],
         ),
       ),

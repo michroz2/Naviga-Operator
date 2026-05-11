@@ -1,7 +1,7 @@
 /*
  * Файл: ble_service.dart
- * Версия: 1.11
- * Изменения: Добавлен метод setSysConfig для отправки пакета CMD_SET_SYS_CONFIG (0x02).
+ * Версия: 1.12
+ * Изменения: Добавлен метод factoryReset для отправки команды CMD_ACTION_RESET (0x03) и немедленного сброса стейта приложения (UC-08).
  * Описание: Класс-синглтон для управления модулем Bluetooth.
  */
 
@@ -148,7 +148,6 @@ class BleService {
     }
   }
 
-  // --- НОВЫЙ МЕТОД: Сохранение Системных Таймеров ---
   Future<void> setSysConfig({
     required int txMoving,
     required int txStill,
@@ -173,6 +172,21 @@ class BleService {
       });
     } catch (e) {
       debugPrint('Ошибка формирования пакета CMD_SET_SYS_CONFIG: $e');
+    }
+  }
+
+  // --- НОВЫЙ МЕТОД: Заводской сброс (UC-08) ---
+  Future<void> factoryReset() async {
+    debugPrint('Отправка команды Factory Reset (OpCode 0x03)...');
+    try {
+      await _sendCommand([BleOpCode.cmdActionReset]);
+      
+      // Искусственно разрываем соединение со стороны смартфона, так как Донгл сейчас ушел в перезагрузку.
+      // Это предотвратит зависание UI в ожидании системного таймаута Bluetooth.
+      await disconnect();
+      debugPrint('Приложение очистило стейт из-за заводского сброса Донгла.');
+    } catch (e) {
+      debugPrint('Ошибка при отправке Factory Reset: $e');
     }
   }
 
