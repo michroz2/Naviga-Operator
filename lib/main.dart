@@ -1,8 +1,7 @@
 /*
  * Файл: main.dart
- * Версия: 1.12
- * Изменения: На экран EditIdentityScreen добавлена опасная кнопка "Сброс к заводским настройкам" с диалогом подтверждения (UC-08).
- * Описание: Главный экран приложения.
+ * Версия: 1.13
+ * Изменения: Добавлен UI-блок "Топология Сети", отображающий количество соседей из локальной NodeDatabase.
  */
 
 import 'dart:convert';
@@ -14,7 +13,7 @@ import 'ble_service.dart';
 
 void main() {
   print('\n=========================================');
-  print('===== ОПЕРАТОР START version 1.12 =====');
+  print('===== ОПЕРАТОР START version 1.13 =====');
   print('=========================================\n');
   
   runApp(const NavigaTestApp());
@@ -59,7 +58,7 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Naviga v1.12 Setup'),
+        title: const Text('Naviga v1.13 Setup'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
@@ -156,6 +155,47 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
             ),
           ),
           const SizedBox(height: 20),
+
+          // --- ИЗМЕНЕНИЕ 1.13: БЛОК ТОПОЛОГИИ СЕТИ ---
+          ListenableBuilder(
+            // Слушаем и базу (новые узлы), и identity (наш MyNodeId)
+            listenable: Listenable.merge([_bleService.nodeDatabase, _bleService.identityNotifier]),
+            builder: (context, child) {
+              final myId = _bleService.identityNotifier.value?.myNodeId;
+              final neighborsCount = _bleService.nodeDatabase.getNeighborsCount(myId);
+
+              return Card(
+                elevation: 4,
+                child: InkWell(
+                  onTap: () {
+                    // TODO: Открытие экрана со списком узлов на следующем шаге
+                    debugPrint('Переход к списку узлов...');
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.hub, color: Colors.blue, size: 32),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Топология Сети', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                              Text('Найдено соседей: $neighborsCount', style: const TextStyle(fontSize: 16)),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.chevron_right, color: Colors.grey),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 10),
           
           ValueListenableBuilder<BleEvtMyStatus?>(
             valueListenable: _bleService.myStatusNotifier,
@@ -322,7 +362,6 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
     super.dispose(); 
   }
 
-  // Диалог подтверждения Factory Reset
   void _showResetDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -334,14 +373,14 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(ctx).pop(), // Отмена
+              onPressed: () => Navigator.of(ctx).pop(),
               child: const Text('ОТМЕНА'),
             ),
             TextButton(
               onPressed: () {
-                Navigator.of(ctx).pop(); // Закрываем диалог
-                _bleService.factoryReset(); // Отправляем команду и рвем связь
-                Navigator.of(context).pop(); // Закрываем экран редактирования (возврат к сканированию)
+                Navigator.of(ctx).pop();
+                _bleService.factoryReset();
+                Navigator.of(context).pop();
               },
               style: TextButton.styleFrom(foregroundColor: Colors.red),
               child: const Text('СБРОСИТЬ'),
@@ -400,8 +439,6 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
               ),
               child: const Text('СОХРАНИТЬ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ),
-            
-            // --- НОВАЯ КНОПКА СБРОСА (UC-08) ---
             const SizedBox(height: 30),
             const Divider(),
             const SizedBox(height: 10),

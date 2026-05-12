@@ -1,8 +1,7 @@
 /*
  * Файл: ble_service.dart
- * Версия: 1.12
- * Изменения: Добавлен метод factoryReset для отправки команды CMD_ACTION_RESET (0x03) и немедленного сброса стейта приложения (UC-08).
- * Описание: Класс-синглтон для управления модулем Bluetooth.
+ * Версия: 1.13
+ * Изменения: Интеграция с локальной NodeDatabase. Обработка пакетов EVT_NODE_UPDATE и EVT_NODE_DELETE.
  */
 
 import 'dart:async';
@@ -10,6 +9,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'ble_protocol.dart';
+import 'node_database.dart'; // ИЗМЕНЕНИЕ 1.13
 
 class BleService {
   static final BleService _instance = BleService._internal();
@@ -31,6 +31,9 @@ class BleService {
   final ValueNotifier<BleIdentity?> identityNotifier = ValueNotifier(null);
   final ValueNotifier<BleSysConfig?> sysConfigNotifier = ValueNotifier(null);
   final ValueNotifier<BleEvtMyStatus?> myStatusNotifier = ValueNotifier(null);
+
+  // ИЗМЕНЕНИЕ 1.13: Инициализация нашей базы узлов
+  final NodeDatabase nodeDatabase = NodeDatabase();
 
   Future<void> startScan() async {
     await _scanSubscription?.cancel();
@@ -108,24 +111,20 @@ class BleService {
     try {
       bool withoutResp = _rxCharacteristic!.properties.writeWithoutResponse;
       await _rxCharacteristic!.write(data, withoutResponse: withoutResp);
-      debugPrint('>>> Отправлено в RX: $data');
     } catch (e) {
       debugPrint('Ошибка при отправке: $e');
     }
   }
 
   void _requestIdentity() {
-    debugPrint('Запрос Identity (OpCode 0x06)...');
     _sendCommand([BleOpCode.cmdReqIdentity]);
   }
 
   void _requestSysConfig() {
-    debugPrint('Запрос SysConfig (OpCode 0x07)...');
     _sendCommand([BleOpCode.cmdReqSysConfig]);
   }
 
   Future<void> setIdentity(int nodeId, String name, int role) async {
-    debugPrint('Отправка новых настроек Identity (OpCode 0x01)...');
     try {
       List<int> payload = List<int>.filled(27, 0);
       payload[0] = BleOpCode.cmdSetIdentity; 
@@ -144,7 +143,7 @@ class BleService {
         _requestIdentity();
       });
     } catch (e) {
-      debugPrint('Ошибка формирования пакета CMD_SET_IDENTITY: $e');
+      debugPrint('Ошибка CMD_SET_IDENTITY: $e');
     }
   }
 
@@ -154,7 +153,6 @@ class BleService {
     required int connTimeout,
     required int activeTimeout,
   }) async {
-    debugPrint('Отправка новых системных таймеров (OpCode 0x02)...');
     try {
       final payload = Uint8List(17);
       final byteData = ByteData.view(payload.buffer);
@@ -171,22 +169,16 @@ class BleService {
         _requestSysConfig();
       });
     } catch (e) {
-      debugPrint('Ошибка формирования пакета CMD_SET_SYS_CONFIG: $e');
+      debugPrint('Ошибка CMD_SET_SYS_CONFIG: $e');
     }
   }
 
-  // --- НОВЫЙ МЕТОД: Заводской сброс (UC-08) ---
   Future<void> factoryReset() async {
-    debugPrint('Отправка команды Factory Reset (OpCode 0x03)...');
     try {
       await _sendCommand([BleOpCode.cmdActionReset]);
-      
-      // Искусственно разрываем соединение со стороны смартфона, так как Донгл сейчас ушел в перезагрузку.
-      // Это предотвратит зависание UI в ожидании системного таймаута Bluetooth.
       await disconnect();
-      debugPrint('Приложение очистило стейт из-за заводского сброса Донгла.');
     } catch (e) {
-      debugPrint('Ошибка при отправке Factory Reset: $e');
+      debugPrint('Ошибка Factory Reset: $e');
     }
   }
 
@@ -196,21 +188,23 @@ class BleService {
     try {
       if (opCode == BleOpCode.evtIdentity) {
         final identity = BleIdentity.fromBytes(data);
-        debugPrint('<<< Получен EVT_IDENTITY: ID=${identity.myNodeId}');
         identityNotifier.value = identity; 
-        if (sysConfigNotifier.value == null) {
-          _requestSysConfig();
-        }
+        if (sysConfigNotifier.value == null) _requestSysConfig();
       } 
       else if (opCode == BleOpCode.evtSysConfig) {
-        final config = BleSysConfig.fromBytes(data);
-        debugPrint('<<< Получен EVT_SYS_CONFIG: Moving=${config.txIntervalMoving}мс');
-        sysConfigNotifier.value = config; 
+        sysConfigNotifier.value = BleSysConfig.fromBytes(data); 
       }
       else if (opCode == BleOpCode.evtMyStatus) {
-        final status = BleEvtMyStatus.fromBytes(data);
-        debugPrint('<<< Получен EVT_MY_STATUS: Батарея=${status.batteryPercent}% (${status.batteryVoltage} мВ)');
-        myStatusNotifier.value = status;
+        myStatusNotifier.value = BleEvtMyStatus.fromBytes(data);
+      }
+      // ИЗМЕНЕНИЕ 1.13: Передаем данные в БД (включая MyNodeId для математики)
+      else if (opCode == BleOpCode.evtNodeUpdate) {
+        final update = BleEvtNodeUpdate.fromBytes(data);
+        nodeDatabase.updateNode(update, identityNotifier.value?.myNodeId);
+      }
+      else if (opCode == BleOpCode.evtNodeDelete) {
+        final delNode = BleEvtNodeDelete.fromBytes(data);
+        nodeDatabase.deleteNode(delNode.nodeId);
       }
     } catch (e) {
       debugPrint('Ошибка парсинга пакета 0x${opCode.toRadixString(16)}: $e');
@@ -229,6 +223,9 @@ class BleService {
     identityNotifier.value = null;
     sysConfigNotifier.value = null;
     myStatusNotifier.value = null;
+    
+    nodeDatabase.clear(); // ИЗМЕНЕНИЕ 1.13: Очистка базы при отключении
+    
     debugPrint('Устройство отключено');
   }
 }
