@@ -1,7 +1,8 @@
 /*
  * Файл: ble_protocol.dart
- * Версия: 1.13
- * Изменения: Обновлен BleEvtNodeUpdate под v1.40 (43 байта, без дистанции/азимута). Добавлен BleEvtNodeDelete (0x14).
+ * Версия: 1.15
+ * Изменения: Поддержка протокола v1.46.4. Добавлены EVT_NODE_COORDS (0x15) и EVT_NODE_INFO (0x16).
+ * Описание: Бинарные структуры и OpCodes.
  */
 
 import 'dart:convert';
@@ -18,6 +19,8 @@ class BleOpCode {
   static const int cmdSetIdentity = 0x01;
   static const int cmdSetSysConfig = 0x02;
   static const int cmdActionReset = 0x03;
+  static const int cmdActionClearDb = 0x04;
+  static const int cmdReqFullSync = 0x05;
   static const int cmdReqIdentity = 0x06;
   static const int cmdReqSysConfig = 0x07;
 
@@ -25,7 +28,9 @@ class BleOpCode {
   static const int evtNodeUpdate = 0x11;
   static const int evtIdentity = 0x12;
   static const int evtSysConfig = 0x13;
-  static const int evtNodeDelete = 0x14; // ИЗМЕНЕНИЕ 1.13
+  static const int evtNodeDelete = 0x14;
+  static const int evtNodeCoords = 0x15; // NEW: Delta Coords
+  static const int evtNodeInfo = 0x16;   // NEW: Delta Name/Role
 }
 
 String _parseNullTerminatedString(Uint8List bytes, int offset, int length) {
@@ -44,7 +49,7 @@ class BleIdentity {
   BleIdentity({required this.opCode, required this.myNodeId, required this.myName, required this.myRole});
 
   factory BleIdentity.fromBytes(List<int> bytes) {
-    if (bytes.length < 27) throw Exception('BleIdentity: Неверная длина пакета');
+    if (bytes.length < 27) throw Exception('BleIdentity: Wrong size');
     final byteData = ByteData.sublistView(Uint8List.fromList(bytes));
     final rawBytes = Uint8List.fromList(bytes);
 
@@ -67,7 +72,7 @@ class BleSysConfig {
   BleSysConfig({required this.opCode, required this.txIntervalMoving, required this.txIntervalStill, required this.nodeConnectionTimeout, required this.nodeActiveTimeoutMs});
 
   factory BleSysConfig.fromBytes(List<int> bytes) {
-    if (bytes.length < 17) throw Exception('BleSysConfig: Неверная длина пакета');
+    if (bytes.length < 17) throw Exception('BleSysConfig: Wrong size');
     final byteData = ByteData.sublistView(Uint8List.fromList(bytes));
 
     return BleSysConfig(
@@ -93,7 +98,7 @@ class BleEvtNodeUpdate {
   BleEvtNodeUpdate({required this.opCode, required this.nodeId, required this.nodeRole, required this.nodeName, required this.lat, required this.lon, required this.snr, required this.lastSeenAge});
 
   factory BleEvtNodeUpdate.fromBytes(List<int> bytes) {
-    if (bytes.length < 43) throw Exception('BleEvtNodeUpdate: Неверная длина (ожидается 43)');
+    if (bytes.length < 43) throw Exception('BleEvtNodeUpdate: Wrong size');
     final byteData = ByteData.sublistView(Uint8List.fromList(bytes));
     final rawBytes = Uint8List.fromList(bytes);
 
@@ -102,7 +107,6 @@ class BleEvtNodeUpdate {
       nodeId: byteData.getUint8(1),
       nodeRole: byteData.getUint8(2),
       nodeName: _parseNullTerminatedString(rawBytes, 3, 24),
-      // Смещения изменены: lat начинается с 27
       lat: byteData.getFloat32(27, Endian.little),
       lon: byteData.getFloat32(31, Endian.little),
       snr: byteData.getFloat32(35, Endian.little),
@@ -121,7 +125,7 @@ class BleEvtMyStatus {
   BleEvtMyStatus({required this.opCode, required this.gpsValid, required this.satellites, required this.batteryPercent, required this.batteryVoltage});
 
   factory BleEvtMyStatus.fromBytes(List<int> bytes) {
-    if (bytes.length < 6) throw Exception('BleEvtMyStatus: Неверная длина пакета');
+    if (bytes.length < 6) throw Exception('BleEvtMyStatus: Wrong size');
     final byteData = ByteData.sublistView(Uint8List.fromList(bytes));
 
     return BleEvtMyStatus(
@@ -134,18 +138,52 @@ class BleEvtMyStatus {
   }
 }
 
-// ИЗМЕНЕНИЕ 1.13: Пакет удаления
 class BleEvtNodeDelete {
   final int opCode;
   final int nodeId;
-
   BleEvtNodeDelete({required this.opCode, required this.nodeId});
-
   factory BleEvtNodeDelete.fromBytes(List<int> bytes) {
-    if (bytes.length < 2) throw Exception('BleEvtNodeDelete: Неверная длина пакета');
-    return BleEvtNodeDelete(
-      opCode: bytes[0],
-      nodeId: bytes[1],
+    return BleEvtNodeDelete(opCode: bytes[0], nodeId: bytes[1]);
+  }
+}
+
+// 4.6. Обновление координат (BleEvtNodeCoords) - 14 байт
+class BleEvtNodeCoords {
+  final int nodeId;
+  final double lat;
+  final double lon;
+  final double snr;
+
+  BleEvtNodeCoords({required this.nodeId, required this.lat, required this.lon, required this.snr});
+
+  factory BleEvtNodeCoords.fromBytes(List<int> bytes) {
+    if (bytes.length < 14) throw Exception('BleEvtNodeCoords: Wrong size');
+    final byteData = ByteData.sublistView(Uint8List.fromList(bytes));
+    return BleEvtNodeCoords(
+      nodeId: byteData.getUint8(1),
+      lat: byteData.getFloat32(2, Endian.little),
+      lon: byteData.getFloat32(6, Endian.little),
+      snr: byteData.getFloat32(10, Endian.little),
+    );
+  }
+}
+
+// 4.7. Обновление Имени и Роли (BleEvtNodeInfo) - 27 байт
+class BleEvtNodeInfo {
+  final int nodeId;
+  final int nodeRole;
+  final String nodeName;
+
+  BleEvtNodeInfo({required this.nodeId, required this.nodeRole, required this.nodeName});
+
+  factory BleEvtNodeInfo.fromBytes(List<int> bytes) {
+    if (bytes.length < 27) throw Exception('BleEvtNodeInfo: Wrong size');
+    final byteData = ByteData.sublistView(Uint8List.fromList(bytes));
+    final rawBytes = Uint8List.fromList(bytes);
+    return BleEvtNodeInfo(
+      nodeId: byteData.getUint8(1),
+      nodeRole: byteData.getUint8(2),
+      nodeName: _parseNullTerminatedString(rawBytes, 3, 24),
     );
   }
 }
