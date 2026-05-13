@@ -1,7 +1,8 @@
 /*
  * Файл: main.dart
- * Версия: 1.13
- * Изменения: Добавлен UI-блок "Топология Сети", отображающий количество соседей из локальной NodeDatabase.
+ * Версия: 1.14
+ * Изменения: Внедрена навигация на новый экран RosterScreen при нажатии на карточку "Топология Сети".
+ * Описание: Главный экран приложения.
  */
 
 import 'dart:convert';
@@ -10,10 +11,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'ble_protocol.dart';
 import 'ble_service.dart';
+import 'roster_screen.dart'; // ИЗМЕНЕНИЕ 1.14: Импорт нового экрана
 
 void main() {
   print('\n=========================================');
-  print('===== ОПЕРАТОР START version 1.13 =====');
+  print('===== ОПЕРАТОР START version 1.14 =====');
   print('=========================================\n');
   
   runApp(const NavigaTestApp());
@@ -58,7 +60,7 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Naviga v1.13 Setup'),
+        title: const Text('Naviga v1.14 Setup'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
@@ -156,9 +158,8 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
           ),
           const SizedBox(height: 20),
 
-          // --- ИЗМЕНЕНИЕ 1.13: БЛОК ТОПОЛОГИИ СЕТИ ---
+          // --- БЛОК ТОПОЛОГИИ СЕТИ ---
           ListenableBuilder(
-            // Слушаем и базу (новые узлы), и identity (наш MyNodeId)
             listenable: Listenable.merge([_bleService.nodeDatabase, _bleService.identityNotifier]),
             builder: (context, child) {
               final myId = _bleService.identityNotifier.value?.myNodeId;
@@ -168,8 +169,11 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
                 elevation: 4,
                 child: InkWell(
                   onTap: () {
-                    // TODO: Открытие экрана со списком узлов на следующем шаге
-                    debugPrint('Переход к списку узлов...');
+                    // ИЗМЕНЕНИЕ 1.14: Навигация на RosterScreen
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const RosterScreen()),
+                    );
                   },
                   borderRadius: BorderRadius.circular(12),
                   child: Padding(

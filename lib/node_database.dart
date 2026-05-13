@@ -1,24 +1,23 @@
 /*
  * Файл: node_database.dart
- * Версия: 1.13.1 (Hotfix)
- * Описание: Локальная база данных (Roster) соседних узлов и математика вычисления дистанции/азимута.
- * Исправление: Корректный импорт latlong2 и удаление const у конструктора Distance.
+ * Версия: 1.14.1
+ * Описание: Локальная база данных (Roster). 
+ * Изменения: Переход на Mutable-архитектуру для поддержки будущих частичных обновлений и фикс сброса дистанции.
  */
 
 import 'package:flutter/foundation.dart';
-import 'package:latlong2/latlong.dart'; // Исправленный импорт
+import 'package:latlong2/latlong.dart';
 import 'ble_protocol.dart';
 
 class NodeRecord {
-  final int nodeId;
-  final int role;
-  final String nodeName;
-  final double lat;
-  final double lon;
-  final double snr;
-  final int lastSeenAge;
+  final int nodeId; // Идентификатор неизменен
+  int role;         // Убран final
+  String nodeName;  // Убран final
+  double lat;       // Убран final
+  double lon;       // Убран final
+  double snr;       // Убран final
+  int lastSeenAge;  // Убран final
   
-  // Вычисляемые поля (рассчитываются Оператором локально)
   double distance; 
   double azimuth;
 
@@ -38,43 +37,49 @@ class NodeRecord {
 class NodeDatabase extends ChangeNotifier {
   final Map<int, NodeRecord> _nodes = {};
 
-  // Получить неизменяемую копию словаря
   Map<int, NodeRecord> get nodes => Map.unmodifiable(_nodes);
 
-  // Получить количество ТОЛЬКО соседей (исключая наш собственный узел)
   int getNeighborsCount(int? myNodeId) {
     if (myNodeId == null) return _nodes.length;
     return _nodes.containsKey(myNodeId) ? _nodes.length - 1 : _nodes.length;
   }
 
   void updateNode(BleEvtNodeUpdate update, int? myNodeId) {
-    // Создаем или обновляем запись из сырого пакета
-    final record = NodeRecord(
-      nodeId: update.nodeId,
-      role: update.nodeRole,
-      nodeName: update.nodeName,
-      lat: update.lat,
-      lon: update.lon,
-      snr: update.snr,
-      lastSeenAge: update.lastSeenAge,
-    );
+    // 1. Классический (mutable) подход: обновляем или создаем
+    if (_nodes.containsKey(update.nodeId)) {
+      // Обновляем только поля, пришедшие в пакете
+      final node = _nodes[update.nodeId]!;
+      node.role = update.nodeRole;
+      node.nodeName = update.nodeName;
+      node.lat = update.lat;
+      node.lon = update.lon;
+      node.snr = update.snr;
+      node.lastSeenAge = update.lastSeenAge;
+    } else {
+      // Создаем новую запись
+      _nodes[update.nodeId] = NodeRecord(
+        nodeId: update.nodeId,
+        role: update.nodeRole,
+        nodeName: update.nodeName,
+        lat: update.lat,
+        lon: update.lon,
+        snr: update.snr,
+        lastSeenAge: update.lastSeenAge,
+      );
+    }
 
-    _nodes[update.nodeId] = record;
-
+    // 2. Пересчет геометрии (дистанции и азимуты теперь не затираются!)
     if (myNodeId != null) {
       if (update.nodeId == myNodeId) {
-        // Это НАШ Донгл обновил свои координаты. 
-        // Нужно пересчитать дистанцию до ВСЕХ соседей в базе.
         _recalculateAllDistances(myNodeId);
       } else {
-        // Это чужой Донгл. Считаем дистанцию от нас до него (если мы уже знаем свои координаты)
         if (_nodes.containsKey(myNodeId)) {
-          _calcDistanceAndAzimuth(_nodes[myNodeId]!, record);
+          _calcDistanceAndAzimuth(_nodes[myNodeId]!, _nodes[update.nodeId]!);
         }
       }
     }
 
-    notifyListeners(); // Сообщаем UI об изменениях в базе
+    notifyListeners();
   }
 
   void deleteNode(int nodeId) {
@@ -90,18 +95,14 @@ class NodeDatabase extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Внутренняя функция вычисления с использованием latlong2
   void _calcDistanceAndAzimuth(NodeRecord me, NodeRecord other) {
-    // Если координаты нулевые (нет GPS-фикса), дистанцию не считаем
     if (me.lat != 0.0 && me.lon != 0.0 && other.lat != 0.0 && other.lon != 0.0) {
       final myLatLng = LatLng(me.lat, me.lon);
       final otherLatLng = LatLng(other.lat, other.lon);
       
-      // Исправлено: убран const перед Distance()
-      other.distance = Distance().as(LengthUnit.Meter, myLatLng, otherLatLng);
+      other.distance = Distance().as(LengthUnit.Meter, myLatLng, otherLatLng).toDouble();
       other.azimuth = Distance().bearing(myLatLng, otherLatLng);
       
-      // Нормализация азимута (0-360)
       if (other.azimuth < 0) other.azimuth += 360.0;
     } else {
       other.distance = 0.0;
