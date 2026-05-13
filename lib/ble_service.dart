@@ -1,8 +1,8 @@
 /*
  * Файл: ble_service.dart
- * Версия: 1.15
- * Изменения: Диспетчеризация новых пакетов 0x15 (Coords) и 0x16 (Info).
- * Описание: BLE-сервис управления соединением.
+ * Версия: 1.15.1
+ * Изменения: Автоматический запрос полной синхронизации (0x05) после получения SysConfig.
+ * Описание: BLE-сервис управления соединением и диспетчеризации пакетов.
  */
 
 import 'dart:async';
@@ -98,7 +98,12 @@ class BleService {
 
   void _requestIdentity() => _sendCommand([BleOpCode.cmdReqIdentity]);
   void _requestSysConfig() => _sendCommand([BleOpCode.cmdReqSysConfig]);
-  void requestFullSync() => _sendCommand([BleOpCode.cmdReqFullSync]);
+  
+  // ИЗМЕНЕНИЕ 1.15.1: Метод явного запроса синхронизации
+  void requestFullSync() {
+    debugPrint('>>> Запрос полной синхронизации базы (0x05)');
+    _sendCommand([BleOpCode.cmdReqFullSync]);
+  }
 
   Future<void> setIdentity(int nodeId, String name, int role) async {
     try {
@@ -127,6 +132,7 @@ class BleService {
       byteData.setUint32(9, connTimeout, Endian.little);
       byteData.setUint32(13, activeTimeout, Endian.little);
       await _sendCommand(payload.toList());
+      // подтверждаем настройки
       Future.delayed(const Duration(milliseconds: 300), _requestSysConfig);
     } catch (e) {
       debugPrint('Error CMD_SET_SYS_CONFIG: $e');
@@ -154,6 +160,8 @@ class BleService {
           break;
         case BleOpCode.evtSysConfig:
           sysConfigNotifier.value = BleSysConfig.fromBytes(data);
+          // ИЗМЕНЕНИЕ 1.15.1: Автоматическая инициализация выгрузки базы после настройки
+          requestFullSync();
           break;
         case BleOpCode.evtMyStatus:
           myStatusNotifier.value = BleEvtMyStatus.fromBytes(data);
