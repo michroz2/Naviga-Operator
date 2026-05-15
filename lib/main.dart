@@ -1,7 +1,7 @@
 /*
  * Файл: main.dart
- * Версия: 1.14
- * Изменения: Внедрена навигация на новый экран RosterScreen при нажатии на карточку "Топология Сети".
+ * Версия: 1.16
+ * Изменения: Исправлен вызов getNeighborsCount() в соответствии с новой архитектурой NodeDatabase.
  * Описание: Главный экран приложения.
  */
 
@@ -11,11 +11,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'ble_protocol.dart';
 import 'ble_service.dart';
-import 'roster_screen.dart'; // ИЗМЕНЕНИЕ 1.14: Импорт нового экрана
+import 'roster_screen.dart';
 
 void main() {
   print('\n=========================================');
-  print('===== ОПЕРАТОР START version 1.14 =====');
+  print('===== ОПЕРАТОР START version 1.16 =====');
   print('=========================================\n');
   
   runApp(const NavigaTestApp());
@@ -60,7 +60,7 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Naviga v1.14 Setup'),
+        title: const Text('Naviga v1.16 Setup'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
@@ -162,14 +162,13 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
           ListenableBuilder(
             listenable: Listenable.merge([_bleService.nodeDatabase, _bleService.identityNotifier]),
             builder: (context, child) {
-              final myId = _bleService.identityNotifier.value?.myNodeId;
-              final neighborsCount = _bleService.nodeDatabase.getNeighborsCount(myId);
+              // ИЗМЕНЕНИЕ 1.16: Метод getNeighborsCount больше не требует передачи myId
+              final neighborsCount = _bleService.nodeDatabase.getNeighborsCount();
 
               return Card(
                 elevation: 4,
                 child: InkWell(
                   onTap: () {
-                    // ИЗМЕНЕНИЕ 1.14: Навигация на RosterScreen
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context) => const RosterScreen()),
@@ -338,7 +337,7 @@ class Utf8ByteLengthFormatter extends TextInputFormatter {
 }
 
 // ============================================================================
-// ЭКРАН: Редактирование Идентификации (UC-01 + UC-08)
+// ЭКРАН: Редактирование Идентификации
 // ============================================================================
 class EditIdentityScreen extends StatefulWidget {
   final BleIdentity currentIdentity;

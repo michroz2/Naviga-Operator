@@ -1,7 +1,7 @@
 /*
  * Файл: ble_service.dart
- * Версия: 1.15.1
- * Изменения: Автоматический запрос полной синхронизации (0x05) после получения SysConfig.
+ * Версия: 1.16
+ * Изменения: Передача ID в NodeDatabase и инициализация GC.
  * Описание: BLE-сервис управления соединением и диспетчеризации пакетов.
  */
 
@@ -99,7 +99,6 @@ class BleService {
   void _requestIdentity() => _sendCommand([BleOpCode.cmdReqIdentity]);
   void _requestSysConfig() => _sendCommand([BleOpCode.cmdReqSysConfig]);
   
-  // ИЗМЕНЕНИЕ 1.15.1: Метод явного запроса синхронизации
   void requestFullSync() {
     debugPrint('>>> Запрос полной синхронизации базы (0x05)');
     _sendCommand([BleOpCode.cmdReqFullSync]);
@@ -132,7 +131,6 @@ class BleService {
       byteData.setUint32(9, connTimeout, Endian.little);
       byteData.setUint32(13, activeTimeout, Endian.little);
       await _sendCommand(payload.toList());
-      // подтверждаем настройки
       Future.delayed(const Duration(milliseconds: 300), _requestSysConfig);
     } catch (e) {
       debugPrint('Error CMD_SET_SYS_CONFIG: $e');
@@ -151,32 +149,34 @@ class BleService {
   void _handleIncomingData(List<int> data) {
     if (data.isEmpty) return;
     int opCode = data[0];
-    int? myId = identityNotifier.value?.myNodeId;
+    
     try {
       switch (opCode) {
         case BleOpCode.evtIdentity:
           identityNotifier.value = BleIdentity.fromBytes(data);
+          nodeDatabase.setMyNodeId(identityNotifier.value?.myNodeId);
           if (sysConfigNotifier.value == null) _requestSysConfig();
           break;
         case BleOpCode.evtSysConfig:
-          sysConfigNotifier.value = BleSysConfig.fromBytes(data);
-          // ИЗМЕНЕНИЕ 1.15.1: Автоматическая инициализация выгрузки базы после настройки
+          final config = BleSysConfig.fromBytes(data);
+          sysConfigNotifier.value = config;
+          nodeDatabase.startGarbageCollector(config.nodeActiveTimeoutMs);
           requestFullSync();
           break;
         case BleOpCode.evtMyStatus:
           myStatusNotifier.value = BleEvtMyStatus.fromBytes(data);
           break;
         case BleOpCode.evtNodeUpdate:
-          nodeDatabase.updateNodeFull(BleEvtNodeUpdate.fromBytes(data), myId);
+          nodeDatabase.updateNodeFull(BleEvtNodeUpdate.fromBytes(data));
           break;
         case BleOpCode.evtNodeDelete:
           nodeDatabase.deleteNode(BleEvtNodeDelete.fromBytes(data).nodeId);
           break;
         case BleOpCode.evtNodeCoords:
-          nodeDatabase.updateNodeCoords(BleEvtNodeCoords.fromBytes(data), myId);
+          nodeDatabase.updateNodeCoords(BleEvtNodeCoords.fromBytes(data));
           break;
         case BleOpCode.evtNodeInfo:
-          nodeDatabase.updateNodeInfo(BleEvtNodeInfo.fromBytes(data), myId);
+          nodeDatabase.updateNodeInfo(BleEvtNodeInfo.fromBytes(data));
           break;
       }
     } catch (e) {
