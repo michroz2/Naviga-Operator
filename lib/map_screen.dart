@@ -1,7 +1,7 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.20
- * Изменения: ЭТАП 2, Шаг 4. Добавлен ListenableBuilder для реактивного прослушивания базы данных узлов (NodeDatabase) и локального ID.
+ * Версия: 1.21
+ * Изменения: ЭТАП 2, Шаг 5. Добавлен MarkerLayer для вывода базовых маркеров узлов (с валидными координатами).
  * Описание: Главный экран картографического модуля (интеграция flutter_map).
  */
 
@@ -28,9 +28,31 @@ class MapScreen extends StatelessWidget {
           bleService.identityNotifier,
         ]),
         builder: (context, child) {
-          // Извлекаем данные для следующего шага (отрисовка маркеров)
           final nodesMap = bleService.nodeDatabase.nodes;
-          final myNodeId = bleService.identityNotifier.value?.myNodeId;
+          // myNodeId пока не используем, он понадобится на следующих шагах для стилизации
+          // final myNodeId = bleService.identityNotifier.value?.myNodeId;
+
+          // Формируем список маркеров
+          final List<Marker> nodeMarkers = [];
+          
+          for (final node in nodesMap.values) {
+            // Исключаем узлы без зафиксированных координат (0.0, 0.0)
+            if (node.lat != 0.0 && node.lon != 0.0) {
+              nodeMarkers.add(
+                Marker(
+                  point: LatLng(node.lat, node.lon),
+                  width: 40.0,
+                  height: 40.0,
+                  alignment: Alignment.center, // Центрируем иконку точно по координатам
+                  child: const Icon(
+                    Icons.location_pin,
+                    color: Colors.blueAccent,
+                    size: 40.0,
+                  ),
+                ),
+              );
+            }
+          }
 
           return FlutterMap(
             options: const MapOptions(
@@ -42,7 +64,9 @@ class MapScreen extends StatelessWidget {
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.example.naviga_operator',
               ),
-              // TODO: Шаг 5 - Здесь будет MarkerLayer
+              MarkerLayer(
+                markers: nodeMarkers,
+              ),
             ],
           );
         },
