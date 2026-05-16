@@ -1,7 +1,7 @@
 /*
  * Файл: ble_service.dart
- * Версия: 1.15.1
- * Изменения: Автоматический запрос полной синхронизации (0x05) после получения SysConfig.
+ * Версия: 1.16.1
+ * Изменения: Вызов initLocalNode при парсинге Identity для гарантированного отображения "Я" в ростере.
  * Описание: BLE-сервис управления соединением и диспетчеризации пакетов.
  */
 
@@ -99,7 +99,6 @@ class BleService {
   void _requestIdentity() => _sendCommand([BleOpCode.cmdReqIdentity]);
   void _requestSysConfig() => _sendCommand([BleOpCode.cmdReqSysConfig]);
   
-  // ИЗМЕНЕНИЕ 1.15.1: Метод явного запроса синхронизации
   void requestFullSync() {
     debugPrint('>>> Запрос полной синхронизации базы (0x05)');
     _sendCommand([BleOpCode.cmdReqFullSync]);
@@ -132,7 +131,6 @@ class BleService {
       byteData.setUint32(9, connTimeout, Endian.little);
       byteData.setUint32(13, activeTimeout, Endian.little);
       await _sendCommand(payload.toList());
-      // подтверждаем настройки
       Future.delayed(const Duration(milliseconds: 300), _requestSysConfig);
     } catch (e) {
       debugPrint('Error CMD_SET_SYS_CONFIG: $e');
@@ -152,15 +150,26 @@ class BleService {
     if (data.isEmpty) return;
     int opCode = data[0];
     int? myId = identityNotifier.value?.myNodeId;
+    
     try {
       switch (opCode) {
         case BleOpCode.evtIdentity:
+          int? oldId = myId; // Запоминаем старый ID до обновления
           identityNotifier.value = BleIdentity.fromBytes(data);
-          if (sysConfigNotifier.value == null) _requestSysConfig();
+          
+          // ИЗМЕНЕНИЕ 1.16.1: Инъекция собственного узла в базу
+          nodeDatabase.initLocalNode(identityNotifier.value!, oldId);
+
+          if (sysConfigNotifier.value == null) {
+            _requestSysConfig();
+          } else {
+            nodeDatabase.startGarbageCollector(sysConfigNotifier.value!.nodeActiveTimeoutMs, identityNotifier.value?.myNodeId);
+          }
           break;
         case BleOpCode.evtSysConfig:
-          sysConfigNotifier.value = BleSysConfig.fromBytes(data);
-          // ИЗМЕНЕНИЕ 1.15.1: Автоматическая инициализация выгрузки базы после настройки
+          final config = BleSysConfig.fromBytes(data);
+          sysConfigNotifier.value = config;
+          nodeDatabase.startGarbageCollector(config.nodeActiveTimeoutMs, myId);
           requestFullSync();
           break;
         case BleOpCode.evtMyStatus:

@@ -1,7 +1,7 @@
 /*
  * Файл: roster_screen.dart
- * Версия: 1.14.1
- * Изменения: Исправлена логика отображения статуса GPS (проверка наличия собственных координат).
+ * Версия: 1.16
+ * Изменения: Динамическое вычисление статуса Offline на основе lastSeenTimeMs. Визуализация потери связи.
  */
 
 import 'package:flutter/material.dart';
@@ -30,9 +30,9 @@ class RosterScreen extends StatelessWidget {
     }
   }
 
-  // НОВЫЙ АРГУМЕНТ: hasMyGps - знаем ли мы свои координаты
-  String _getDistanceText(NodeRecord node, bool isMe, bool hasMyGps) {
+  String _getDistanceText(NodeRecord node, bool isMe, bool hasMyGps, bool isOnline) {
     if (isMe) return 'Мой узел (Я)';
+    if (!isOnline) return 'Связь потеряна';
     if (!hasMyGps) return 'Ожидание нашего GPS...';
     if (node.lat == 0.0 || node.lon == 0.0) return 'Ожидание GPS узла...';
     if (node.distance < 20.0) return 'Рядом (< 20 м)';
@@ -50,16 +50,22 @@ class RosterScreen extends StatelessWidget {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
       body: ListenableBuilder(
-        listenable: Listenable.merge([bleService.nodeDatabase, bleService.identityNotifier]),
+        listenable: Listenable.merge([
+          bleService.nodeDatabase, 
+          bleService.identityNotifier,
+          bleService.sysConfigNotifier, // ИЗМЕНЕНИЕ 1.16: Подписка на конфиг для таймаута
+        ]),
         builder: (context, child) {
           final nodesMap = bleService.nodeDatabase.nodes;
           final myNodeId = bleService.identityNotifier.value?.myNodeId;
+          
+          final connTimeoutMs = bleService.sysConfigNotifier.value?.nodeConnectionTimeout ?? 600000;
+          final now = DateTime.now().millisecondsSinceEpoch;
 
           if (nodesMap.isEmpty) {
             return const Center(child: Text('База узлов пуста', style: TextStyle(fontSize: 16)));
           }
 
-          // ПРОВЕРКА: Знаем ли мы свои координаты?
           final myNode = nodesMap[myNodeId];
           final bool hasMyGps = myNode != null && myNode.lat != 0.0 && myNode.lon != 0.0;
 
@@ -84,32 +90,48 @@ class RosterScreen extends StatelessWidget {
             itemBuilder: (context, index) {
               final node = sortedNodes[index];
               final isMe = node.nodeId == myNodeId;
+              
+              // ИЗМЕНЕНИЕ 1.16: Динамический статус Offline
+              final isOnline = isMe ? true : (now - node.lastSeenTimeMs) <= connTimeoutMs;
 
-              return Card(
-                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                color: isMe ? Colors.blue.shade50 : null,
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: isMe ? Colors.blue.shade200 : Colors.grey.shade300,
-                    child: Icon(_getRoleIcon(node.role, isMe), color: Colors.black87),
+              return Opacity(
+                opacity: isOnline ? 1.0 : 0.4,
+                child: Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  color: isMe ? Colors.blue.shade50 : null,
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: isMe ? Colors.blue.shade200 : (isOnline ? Colors.grey.shade300 : Colors.grey.shade400),
+                      child: Icon(_getRoleIcon(node.role, isMe), color: isOnline ? Colors.black87 : Colors.black54),
+                    ),
+                    title: Text(
+                      node.nodeName, 
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold, 
+                        color: isMe ? Colors.blue.shade800 : (isOnline ? Colors.black : Colors.black54)
+                      )
+                    ),
+                    subtitle: Text(
+                      _getDistanceText(node, isMe, hasMyGps, isOnline),
+                      style: TextStyle(color: isOnline ? Colors.black87 : Colors.red.shade900)
+                    ),
+                    trailing: const Icon(Icons.info_outline, color: Colors.grey),
+                    onTap: () {
+                      showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                        ),
+                        builder: (context) => NodeDetailsSheet(
+                          node: node, 
+                          isMe: isMe, 
+                          roleName: _getRoleName(node.role),
+                          isOnline: isOnline,
+                        ),
+                      );
+                    },
                   ),
-                  title: Text(
-                    node.nodeName, 
-                    style: TextStyle(fontWeight: FontWeight.bold, color: isMe ? Colors.blue.shade800 : Colors.black)
-                  ),
-                  // Передаем флаг наличия нашего GPS
-                  subtitle: Text(_getDistanceText(node, isMe, hasMyGps)),
-                  trailing: const Icon(Icons.info_outline, color: Colors.grey),
-                  onTap: () {
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                      ),
-                      builder: (context) => NodeDetailsSheet(node: node, isMe: isMe, roleName: _getRoleName(node.role)),
-                    );
-                  },
                 ),
               );
             },
@@ -120,17 +142,24 @@ class RosterScreen extends StatelessWidget {
   }
 }
 
-// (Виджет NodeDetailsSheet остается без изменений, как в предыдущей версии)
 class NodeDetailsSheet extends StatelessWidget {
   final NodeRecord node;
   final bool isMe;
   final String roleName;
+  final bool isOnline;
 
-  const NodeDetailsSheet({super.key, required this.node, required this.isMe, required this.roleName});
+  const NodeDetailsSheet({
+    super.key, 
+    required this.node, 
+    required this.isMe, 
+    required this.roleName,
+    required this.isOnline,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final secondsAgo = node.lastSeenAge > 0 ? (node.lastSeenAge / 1000).toStringAsFixed(1) : '0';
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final secondsAgo = ((now - node.lastSeenTimeMs) / 1000).toStringAsFixed(1);
 
     return Padding(
       padding: const EdgeInsets.all(24.0),
@@ -144,7 +173,7 @@ class NodeDetailsSheet extends StatelessWidget {
           const SizedBox(height: 20),
           Row(
             children: [
-              Icon(isMe ? Icons.person_pin : Icons.device_hub, size: 32, color: isMe ? Colors.blue : Colors.black),
+              Icon(isMe ? Icons.person_pin : Icons.device_hub, size: 32, color: isMe ? Colors.blue : (isOnline ? Colors.black : Colors.grey)),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -155,8 +184,14 @@ class NodeDetailsSheet extends StatelessWidget {
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(15)),
-                child: Text('ID: ${node.nodeId}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                decoration: BoxDecoration(
+                  color: isOnline ? Colors.green.shade100 : Colors.red.shade100, 
+                  borderRadius: BorderRadius.circular(15)
+                ),
+                child: Text(
+                  isOnline ? 'ONLINE' : 'OFFLINE', 
+                  style: TextStyle(fontWeight: FontWeight.bold, color: isOnline ? Colors.green.shade800 : Colors.red.shade800)
+                ),
               ),
             ],
           ),

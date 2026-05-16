@@ -1,10 +1,11 @@
 /*
  * Файл: node_database.dart
- * Версия: 1.15
- * Изменения: Поддержка Delta-updates (0x15, 0x16). Логика инициализации "Нового узла". 
+ * Версия: 1.16.1
+ * Изменения: Добавлен метод initLocalNode для проактивной инъекции собственного узла на основе данных Identity.
  * Описание: Центральная база данных Roster.
  */
 
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 import 'ble_protocol.dart';
@@ -16,7 +17,8 @@ class NodeRecord {
   double lat;       
   double lon;       
   double snr;       
-  int lastSeenAge;  
+  
+  int lastSeenTimeMs; // Абсолютное Unix-время последнего контакта
   
   double distance; 
   double azimuth;
@@ -28,7 +30,7 @@ class NodeRecord {
     required this.lat,
     required this.lon,
     required this.snr,
-    required this.lastSeenAge,
+    required this.lastSeenTimeMs,
     this.distance = 0.0,
     this.azimuth = 0.0,
   });
@@ -36,6 +38,7 @@ class NodeRecord {
 
 class NodeDatabase extends ChangeNotifier {
   final Map<int, NodeRecord> _nodes = {};
+  Timer? _gcTimer;
 
   Map<int, NodeRecord> get nodes => Map.unmodifiable(_nodes);
 
@@ -44,8 +47,65 @@ class NodeDatabase extends ChangeNotifier {
     return _nodes.containsKey(myNodeId) ? _nodes.length - 1 : _nodes.length;
   }
 
-  // ОБРАБОТКА ПОЛНОГО ПАКЕТА (0x11)
+  // --- ИЗМЕНЕНИЕ 1.16.1: Инъекция собственного узла ---
+  void initLocalNode(BleIdentity identity, int? oldNodeId) {
+    final newId = identity.myNodeId;
+    
+    // Если произошла коллизия и Донгл сменил ID - удаляем фантома
+    if (oldNodeId != null && oldNodeId != newId) {
+      _nodes.remove(oldNodeId);
+      debugPrint('NodeDatabase: ID изменен с $oldNodeId на $newId. Старый узел удален.');
+    }
+    
+    final now = DateTime.now().millisecondsSinceEpoch;
+    
+    if (_nodes.containsKey(newId)) {
+      _nodes[newId]!.nodeName = identity.myName;
+      _nodes[newId]!.role = identity.myRole;
+      _nodes[newId]!.lastSeenTimeMs = now;
+    } else {
+      _nodes[newId] = NodeRecord(
+        nodeId: newId,
+        role: identity.myRole,
+        nodeName: identity.myName,
+        lat: 0.0, // Координаты подтянутся позже из 0x15
+        lon: 0.0,
+        snr: 0.0,
+        lastSeenTimeMs: now,
+      );
+    }
+    notifyListeners();
+  }
+
+  void startGarbageCollector(int activeTimeoutMs, int? currentMyNodeId) {
+    _gcTimer?.cancel();
+    _gcTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final List<int> toDelete = [];
+
+      _nodes.forEach((id, node) {
+        if (id == currentMyNodeId) return; // Свой узел имеет иммунитет
+
+        if ((now - node.lastSeenTimeMs) > activeTimeoutMs) {
+          toDelete.add(id);
+        }
+      });
+
+      bool hasChanges = false;
+      for (var id in toDelete) {
+        _nodes.remove(id);
+        debugPrint('NodeDatabase GC: Узел $id удален по таймауту');
+        hasChanges = true;
+      }
+
+      notifyListeners();
+    });
+  }
+
   void updateNodeFull(BleEvtNodeUpdate update, int? myNodeId) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final normalizedTime = now - update.lastSeenAge;
+
     if (_nodes.containsKey(update.nodeId)) {
       final node = _nodes[update.nodeId]!;
       node.role = update.nodeRole;
@@ -53,7 +113,7 @@ class NodeDatabase extends ChangeNotifier {
       node.lat = update.lat;
       node.lon = update.lon;
       node.snr = update.snr;
-      node.lastSeenAge = update.lastSeenAge;
+      node.lastSeenTimeMs = normalizedTime;
     } else {
       _nodes[update.nodeId] = NodeRecord(
         nodeId: update.nodeId,
@@ -62,46 +122,46 @@ class NodeDatabase extends ChangeNotifier {
         lat: update.lat,
         lon: update.lon,
         snr: update.snr,
-        lastSeenAge: update.lastSeenAge,
+        lastSeenTimeMs: normalizedTime,
       );
     }
     _runGeometryUpdate(update.nodeId, myNodeId);
     notifyListeners();
   }
 
-  // ОБРАБОТКА КООРДИНАТ (0x15)
   void updateNodeCoords(BleEvtNodeCoords update, int? myNodeId) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+
     if (_nodes.containsKey(update.nodeId)) {
       final node = _nodes[update.nodeId]!;
       node.lat = update.lat;
       node.lon = update.lon;
       node.snr = update.snr;
-      node.lastSeenAge = 0; // Считаем свежим
+      node.lastSeenTimeMs = now; 
     } else {
-      // Инициализация нового узла по координатам
       _nodes[update.nodeId] = NodeRecord(
         nodeId: update.nodeId,
-        role: 1, // Stalker (default)
+        role: 1, 
         nodeName: "Node ${update.nodeId}",
         lat: update.lat,
         lon: update.lon,
         snr: update.snr,
-        lastSeenAge: 0,
+        lastSeenTimeMs: now,
       );
     }
     _runGeometryUpdate(update.nodeId, myNodeId);
     notifyListeners();
   }
 
-  // ОБРАБОТКА ИМЕНИ/РОЛИ (0x16)
   void updateNodeInfo(BleEvtNodeInfo update, int? myNodeId) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+
     if (_nodes.containsKey(update.nodeId)) {
       final node = _nodes[update.nodeId]!;
       node.role = update.nodeRole;
       node.nodeName = update.nodeName;
-      node.lastSeenAge = 0;
+      node.lastSeenTimeMs = now;
     } else {
-      // Инициализация нового узла по Info
       _nodes[update.nodeId] = NodeRecord(
         nodeId: update.nodeId,
         role: update.nodeRole,
@@ -109,7 +169,7 @@ class NodeDatabase extends ChangeNotifier {
         lat: 0.0,
         lon: 0.0,
         snr: 0.0,
-        lastSeenAge: 0,
+        lastSeenTimeMs: now,
       );
     }
     notifyListeners();
@@ -134,6 +194,7 @@ class NodeDatabase extends ChangeNotifier {
   }
 
   void clear() {
+    _gcTimer?.cancel();
     _nodes.clear();
     notifyListeners();
   }

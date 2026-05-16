@@ -15,7 +15,7 @@ import 'roster_screen.dart'; // ИЗМЕНЕНИЕ 1.14: Импорт новог
 
 void main() {
   print('\n=========================================');
-  print('===== ОПЕРАТОР START version 1.14 =====');
+  print('===== ОПЕРАТОР START version 1.16.1 =====');
   print('=========================================\n');
   
   runApp(const NavigaTestApp());
@@ -60,7 +60,7 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Naviga v1.14 Setup'),
+        title: const Text('Naviga v1.16.1 Setup'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
