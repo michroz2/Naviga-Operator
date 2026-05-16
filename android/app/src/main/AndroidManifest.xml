@@ -1,4 +1,13 @@
+<!--
+ * Файл: AndroidManifest.xml
+ * Версия: 1.17
+ * Изменения: ЭТАП 1, Шаг 1. Добавлено разрешение android.permission.INTERNET для работы картографического модуля.
+ * Описание: Манифест Android-приложения с настройками прав доступа и конфигурацией Activity.
+-->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Добавлено разрешение для доступа к сети Интернет (flutter_map) -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 

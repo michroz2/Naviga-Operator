@@ -1,7 +1,7 @@
 /*
  * Файл: main.dart
- * Версия: 1.14
- * Изменения: Внедрена навигация на новый экран RosterScreen при нажатии на карточку "Топология Сети".
+ * Версия: 1.17
+ * Изменения: ЭТАП 1, Шаг 2. Добавлен импорт map_screen.dart и кнопка перехода на экран Карты.
  * Описание: Главный экран приложения.
  */
 
@@ -11,11 +11,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'ble_protocol.dart';
 import 'ble_service.dart';
-import 'roster_screen.dart'; // ИЗМЕНЕНИЕ 1.14: Импорт нового экрана
+import 'roster_screen.dart';
+import 'map_screen.dart'; // ИЗМЕНЕНИЕ 1.17: Импорт экрана карты
 
 void main() {
   print('\n=========================================');
-  print('===== ОПЕРАТОР START version 1.16.1 =====');
+  print('===== ОПЕРАТОР START version 1.17   =====');
   print('=========================================\n');
   
   runApp(const NavigaTestApp());
@@ -60,7 +61,7 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Naviga v1.16.1 Setup'),
+        title: const Text('Naviga v1.17 Setup'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
@@ -158,7 +159,7 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
           ),
           const SizedBox(height: 20),
 
-          // --- БЛОК ТОПОЛОГИИ СЕТИ ---
+          // --- БЛОК ТОПОЛОГИИ СЕТИ (Список) ---
           ListenableBuilder(
             listenable: Listenable.merge([_bleService.nodeDatabase, _bleService.identityNotifier]),
             builder: (context, child) {
@@ -169,7 +170,6 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
                 elevation: 4,
                 child: InkWell(
                   onTap: () {
-                    // ИЗМЕНЕНИЕ 1.14: Навигация на RosterScreen
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context) => const RosterScreen()),
@@ -186,7 +186,7 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('Топология Сети', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                              const Text('Топология Сети (Список)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                               Text('Найдено соседей: $neighborsCount', style: const TextStyle(fontSize: 16)),
                             ],
                           ),
@@ -198,6 +198,41 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
                 ),
               );
             },
+          ),
+          const SizedBox(height: 10),
+
+          // --- ИЗМЕНЕНИЕ 1.17: БЛОК КАРТЫ ---
+          Card(
+            elevation: 4,
+            color: Colors.blueGrey.shade50,
+            child: InkWell(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const MapScreen()),
+                );
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Row(
+                  children: [
+                    Icon(Icons.map, color: Colors.deepOrange, size: 32),
+                    SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Карта (Naviga Map)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          Text('Визуализация узлов', style: TextStyle(fontSize: 16)),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, color: Colors.grey),
+                  ],
+                ),
+              ),
+            ),
           ),
           const SizedBox(height: 10),
           
