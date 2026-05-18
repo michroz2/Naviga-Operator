@@ -1,7 +1,7 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.23
- * Изменения: ЭТАП 2, Шаг 6 (Исправление). Вычисление initialCenter в initState для мгновенного центрирования при открытии экрана.
+ * Версия: 1.22.2
+ * Изменения: ЭТАП 2, Шаг 6 (Хотфикс). Использование MapCalculator.initialCameraFit для безупречного центрирования без визуальных "прыжков".
  * Описание: Главный экран картографического модуля (интеграция flutter_map).
  */
 
@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'ble_service.dart';
+import 'map_calculator.dart'; // ИЗМЕНЕНИЕ: Подключен математический модуль
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -22,27 +23,6 @@ class _MapScreenState extends State<MapScreen> {
   final MapController _mapController = MapController();
   
   bool _hasCenteredOnMe = false;
-  late LatLng _initialCenter;
-  late double _initialZoom;
-
-  @override
-  void initState() {
-    super.initState();
-    
-    // Считываем базу данных прямо в момент создания экрана
-    final myId = _bleService.identityNotifier.value?.myNodeId;
-    final myNode = myId != null ? _bleService.nodeDatabase.nodes[myId] : null;
-
-    // Если координаты уже есть в базе на момент открытия экрана - стартуем прямо с них
-    if (myNode != null && myNode.lat != 0.0 && myNode.lon != 0.0) {
-      _initialCenter = LatLng(myNode.lat, myNode.lon);
-      _initialZoom = 15.0; // Приближаем, так как это мы
-      _hasCenteredOnMe = true;
-    } else {
-      _initialCenter = const LatLng(59.4370, 24.7536); // Таллин по умолчанию
-      _initialZoom = 13.0;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -61,12 +41,14 @@ class _MapScreenState extends State<MapScreen> {
           final myNodeId = _bleService.identityNotifier.value?.myNodeId;
           final myNode = myNodeId != null ? nodesMap[myNodeId] : null;
 
-          // Эта логика сработает только если мы зашли на карту БЕЗ координат, 
-          // и Донгл поймал GPS уже в процессе просмотра карты
+          // Логика "прыжка", только если мы зашли слепыми, и вдруг поймали свой GPS
           if (!_hasCenteredOnMe && myNode != null && myNode.lat != 0.0 && myNode.lon != 0.0) {
             _hasCenteredOnMe = true;
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              _mapController.move(LatLng(myNode.lat, myNode.lon), 15.0);
+              final dynamicFit = MapCalculator.calculateInitialFit(nodesMap, myNodeId);
+              if (dynamicFit != null) {
+                _mapController.fitCamera(dynamicFit);
+              }
             });
           }
 
@@ -91,11 +73,16 @@ class _MapScreenState extends State<MapScreen> {
             }
           }
 
+          // Первоначальное вычисление границ. Если GPS нет ни у кого, MapCalculator вернет null.
+          // В этом случае сработает резервный initialCenter (Таллин).
+          final initialFit = MapCalculator.calculateInitialFit(nodesMap, myNodeId);
+
           return FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              initialCenter: _initialCenter, 
-              initialZoom: _initialZoom,
+              initialCameraFit: initialFit, // Умное вычисление Bounds при открытии
+              initialCenter: const LatLng(59.4370, 24.7536), // Резервный центр
+              initialZoom: 13.0,
             ),
             children: [
               TileLayer(

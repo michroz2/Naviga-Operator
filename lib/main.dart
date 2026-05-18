@@ -1,7 +1,7 @@
 /*
  * Файл: main.dart
- * Версия: 1.22
- * Изменения: ЭТАП 1, Шаг 2. Добавлен импорт map_screen.dart и кнопка перехода на экран Карты.
+ * Версия: 1.22.2
+ * Изменения: ЭТАП 2, Шаг 6 (Хотфикс). Блокировка кнопки перехода на карту при полном отсутствии GPS у всех узлов.
  * Описание: Главный экран приложения.
  */
 
@@ -12,11 +12,11 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'ble_protocol.dart';
 import 'ble_service.dart';
 import 'roster_screen.dart';
-import 'map_screen.dart'; // ИЗМЕНЕНИЕ 1.17: Импорт экрана карты
+import 'map_screen.dart';
 
 void main() {
   print('\n=========================================');
-  print('===== ОПЕРАТОР START version 1.22   =====');
+  print('===== ОПЕРАТОР START version 1.22.2 =====');
   print('=========================================\n');
   
   runApp(const NavigaTestApp());
@@ -61,7 +61,7 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Naviga v1.22 Setup'),
+        title: const Text('Naviga v1.22.2 Setup'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
@@ -201,38 +201,56 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
           ),
           const SizedBox(height: 10),
 
-          // --- ИЗМЕНЕНИЕ 1.17: БЛОК КАРТЫ ---
-          Card(
-            elevation: 4,
-            color: Colors.blueGrey.shade50,
-            child: InkWell(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const MapScreen()),
-                );
-              },
-              borderRadius: BorderRadius.circular(12),
-              child: const Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Row(
-                  children: [
-                    Icon(Icons.map, color: Colors.deepOrange, size: 32),
-                    SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Карта (Naviga Map)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                          Text('Визуализация узлов', style: TextStyle(fontSize: 16)),
-                        ],
-                      ),
+          // --- БЛОК КАРТЫ С УМНОЙ БЛОКИРОВКОЙ ---
+          ListenableBuilder(
+            listenable: _bleService.nodeDatabase,
+            builder: (context, child) {
+              // Ищем хотя бы один узел с валидными координатами
+              final hasValidGps = _bleService.nodeDatabase.nodes.values
+                  .any((n) => n.lat != 0.0 && n.lon != 0.0);
+
+              return Card(
+                elevation: hasValidGps ? 4 : 1,
+                color: hasValidGps ? Colors.blueGrey.shade50 : Colors.grey.shade200,
+                child: InkWell(
+                  onTap: hasValidGps ? () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const MapScreen()),
+                    );
+                  } : null, // Кнопка отключена, если GPS нет ни у кого
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      children: [
+                        Icon(Icons.map, color: hasValidGps ? Colors.deepOrange : Colors.grey, size: 32),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(hasValidGps ? 'Карта (Naviga Map)' : 'Карта недоступна', 
+                                style: TextStyle(
+                                  fontSize: 18, 
+                                  fontWeight: FontWeight.bold,
+                                  color: hasValidGps ? Colors.black87 : Colors.grey.shade600
+                                )),
+                              Text(hasValidGps ? 'Визуализация узлов' : 'Ожидание геоданных из сети...', 
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: hasValidGps ? Colors.black87 : Colors.grey.shade600
+                                )),
+                            ],
+                          ),
+                        ),
+                        Icon(Icons.chevron_right, color: hasValidGps ? Colors.grey : Colors.transparent),
+                      ],
                     ),
-                    Icon(Icons.chevron_right, color: Colors.grey),
-                  ],
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
           const SizedBox(height: 10),
           
