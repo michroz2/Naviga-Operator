@@ -1,6 +1,6 @@
 /*
  * Файл: main.dart
- * Версия: 1.17
+ * Версия: 1.22
  * Изменения: ЭТАП 1, Шаг 2. Добавлен импорт map_screen.dart и кнопка перехода на экран Карты.
  * Описание: Главный экран приложения.
  */
@@ -16,7 +16,7 @@ import 'map_screen.dart'; // ИЗМЕНЕНИЕ 1.17: Импорт экрана 
 
 void main() {
   print('\n=========================================');
-  print('===== ОПЕРАТОР START version 1.17   =====');
+  print('===== ОПЕРАТОР START version 1.22   =====');
   print('=========================================\n');
   
   runApp(const NavigaTestApp());
@@ -61,7 +61,7 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Naviga v1.17 Setup'),
+        title: const Text('Naviga v1.22 Setup'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
