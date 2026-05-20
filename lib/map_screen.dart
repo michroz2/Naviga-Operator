@@ -1,7 +1,7 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.24
- * Изменения: ЭТАП 3, Шаг 7. Стилизация узлов на карте с учетом Роли, статуса (isMe, Online/Offline) и добавление текстовых подписей. Внедрен MarkerStyleManager.
+ * Версия: 1.25
+ * Изменения: ЭТАП 3, Шаг 10. Добавлена кликабельность маркеров через GestureDetector. При нажатии вызывается showModalBottomSheet с детальной информацией узла (NodeDetailsSheet) из Ростера.
  * Описание: Экран визуализации узлов на интерактивной карте.
  */
 
@@ -10,6 +10,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'ble_service.dart';
 import 'node_database.dart';
+import 'roster_screen.dart'; // Необходим для вызова NodeDetailsSheet
 
 // ============================================================================
 // Вспомогательный класс: Управление стилями маркеров (задел под Settings)
@@ -31,24 +32,22 @@ class MarkerStyleManager {
     IconData icon;
     Color color;
 
-    // 1. Определяем базовую иконку по роли
     switch (role) {
       case 0: 
-        icon = Icons.cell_tower; // Ретранслятор
+        icon = Icons.cell_tower; 
         break;
       case 1: 
-        icon = Icons.location_on; // Сталкер (Капля)
+        icon = Icons.location_on; 
         break;
       case 2: 
-        icon = Icons.gps_fixed; // Трекер (Мишень)
+        icon = Icons.gps_fixed; 
         break;
       default: 
         icon = Icons.device_unknown;
     }
 
-    // 2. Определяем базовый цвет
     if (isMe) {
-      color = Colors.red; // Свой узел всегда красный
+      color = Colors.red; 
     } else {
       switch (role) {
         case 0: color = Colors.purple; break;
@@ -58,11 +57,10 @@ class MarkerStyleManager {
       }
     }
 
-    // 3. Обработка потери связи (Offline)
     double opacity = 1.0;
     if (!isOnline) {
       color = Colors.grey;
-      opacity = 0.5; // Полупрозрачность для оффлайна
+      opacity = 0.5; 
     }
 
     return MarkerStyle(icon: icon, color: color, opacity: opacity);
@@ -83,6 +81,15 @@ class _MapScreenState extends State<MapScreen> {
   final BleService _bleService = BleService();
   final MapController _mapController = MapController();
 
+  String _getRoleName(int roleCode) {
+    switch (roleCode) {
+      case 0: return 'Ретранслятор';
+      case 1: return 'Сталкер';
+      case 2: return 'Трекер';
+      default: return 'Неизвестно';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -97,7 +104,6 @@ class _MapScreenState extends State<MapScreen> {
           _bleService.sysConfigNotifier,
         ]),
         builder: (context, child) {
-          // Выбираем только те узлы, у которых есть валидные координаты
           final nodes = _bleService.nodeDatabase.nodes.values
               .where((n) => n.hasValidGps)
               .toList();
@@ -106,7 +112,6 @@ class _MapScreenState extends State<MapScreen> {
           final timeoutMs = _bleService.sysConfigNotifier.value?.nodeConnectionTimeout ?? 600000;
           final now = DateTime.now().millisecondsSinceEpoch;
 
-          // Первоначальное центрирование карты (на свой узел или первый попавшийся)
           LatLng initialCenter = const LatLng(0, 0);
           if (nodes.isNotEmpty) {
             final myNode = nodes.firstWhere((n) => n.nodeId == myId, orElse: () => nodes.first);
@@ -129,7 +134,6 @@ class _MapScreenState extends State<MapScreen> {
                   final isMe = node.nodeId == myId;
                   final isOnline = isMe ? true : (now - node.lastSeenTimeMs) <= timeoutMs;
                   
-                  // Получаем готовый стиль из нашего менеджера
                   final style = MarkerStyleManager.getStyle(
                     role: node.role,
                     isMe: isMe,
@@ -138,46 +142,62 @@ class _MapScreenState extends State<MapScreen> {
 
                   return Marker(
                     point: LatLng(node.lat, node.lon),
-                    width: 120, // Ширина с запасом под длинные имена
-                    height: 80, // Высота для иконки и подписи
-                    child: Opacity(
-                      opacity: style.opacity,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // 1. Круглый бейдж с иконкой
-                          Container(
-                            decoration: const BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(color: Colors.black26, blurRadius: 3, offset: Offset(0, 2))
-                              ],
-                            ),
-                            padding: const EdgeInsets.all(6),
-                            child: Icon(style.icon, color: style.color, size: 28),
+                    width: 120, 
+                    height: 80, 
+                    child: GestureDetector(
+                      // ИЗМЕНЕНИЕ 1.25: Обработка нажатия на маркер для вывода BottomSheet
+                      onTap: () {
+                        showModalBottomSheet(
+                          context: context,
+                          isScrollControlled: true,
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                           ),
-                          const SizedBox(height: 2),
-                          // 2. Шильдик с именем узла
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.85),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: Colors.black12),
-                            ),
-                            child: Text(
-                              node.nodeName,
-                              style: const TextStyle(
-                                fontSize: 11, 
-                                fontWeight: FontWeight.bold, 
-                                color: Colors.black87
+                          builder: (context) => NodeDetailsSheet(
+                            node: node,
+                            isMe: isMe,
+                            roleName: _getRoleName(node.role),
+                            isOnline: isOnline,
+                          ),
+                        );
+                      },
+                      child: Opacity(
+                        opacity: style.opacity,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              decoration: const BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(color: Colors.black26, blurRadius: 3, offset: Offset(0, 2))
+                                ],
                               ),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
+                              padding: const EdgeInsets.all(6),
+                              child: Icon(style.icon, color: style.color, size: 28),
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 2),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.85),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.black12),
+                              ),
+                              child: Text(
+                                node.nodeName,
+                                style: const TextStyle(
+                                  fontSize: 11, 
+                                  fontWeight: FontWeight.bold, 
+                                  color: Colors.black87
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   );
@@ -189,7 +209,6 @@ class _MapScreenState extends State<MapScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          // Быстрый возврат камеры к собственному узлу
           final myId = _bleService.identityNotifier.value?.myNodeId;
           final myNode = _bleService.nodeDatabase.nodes[myId];
           if (myNode != null && myNode.hasValidGps) {
