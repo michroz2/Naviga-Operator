@@ -13,6 +13,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -37,38 +38,12 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
-
-    // Ignore stray desktop.ini if sync tools drop it next to .so files (common under Google Drive).
-    packaging {
-        jniLibs {
-            excludes += "**/desktop.ini"
-        }
-    }
-}
-
-// Strip runs on merged_native_libs before APK packaging; remove junk files after merge, before strip.
-tasks.configureEach {
-    val stripNative = name.startsWith("strip") && name.endsWith("DebugSymbols")
-    if (!stripNative) return@configureEach
-
-    doFirst {
-        val flutterProjectDir = rootProject.projectDir.parentFile
-        val mergedRoot =
-            flutterProjectDir.resolve("build/app/intermediates/merged_native_libs")
-        if (!mergedRoot.exists()) return@doFirst
-
-        mergedRoot.walkTopDown()
-            .filter { it.isFile && it.name.equals("desktop.ini", ignoreCase = true) }
-            .forEach { file ->
-                logger.lifecycle(
-                    "Removing stray desktop.ini before native strip: {}",
-                    file.absolutePath,
-                )
-                file.delete()
-            }
-    }
 }
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
 }

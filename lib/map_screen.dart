@@ -1,7 +1,7 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.25
- * Изменения: ЭТАП 3, Шаг 10. Добавлена кликабельность маркеров через GestureDetector. При нажатии вызывается showModalBottomSheet с детальной информацией узла (NodeDetailsSheet) из Ростера.
+ * Версия: 1.28
+ * Изменения: ЭТАП 4, Шаг 12 (UC-21). Добавлен PolylineLayer для визуализации «хвостов» перемещения узлов. Хвосты отрисовываются под маркерами с учетом ограничения по времени (30 минут).
  * Описание: Экран визуализации узлов на интерактивной карте.
  */
 
@@ -10,10 +10,10 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'ble_service.dart';
 import 'node_database.dart';
-import 'roster_screen.dart'; // Необходим для вызова NodeDetailsSheet
+import 'roster_screen.dart'; 
 
 // ============================================================================
-// Вспомогательный класс: Управление стилями маркеров (задел под Settings)
+// Вспомогательный класс: Управление стилями маркеров
 // ============================================================================
 class MarkerStyle {
   final IconData icon;
@@ -129,6 +129,23 @@ class _MapScreenState extends State<MapScreen> {
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.michroz2.naviga_operator',
               ),
+              // ИЗМЕНЕНИЕ 1.28: Слой полилиний (хвостов) отрисовывается ПОД маркерами
+              PolylineLayer(
+                polylines: nodes.map((node) {
+                  final isMe = node.nodeId == myId;
+                  final isOnline = isMe ? true : (now - node.lastSeenTimeMs) <= timeoutMs;
+                  final style = MarkerStyleManager.getStyle(role: node.role, isMe: isMe, isOnline: isOnline);
+                  
+                  // Запрашиваем актуальный трек (30 минут = 1 800 000 мс)
+                  final track = node.getRecentTrack(1800000);
+
+                  return Polyline(
+                    points: track,
+                    strokeWidth: 4.0,
+                    color: style.color.withOpacity(isOnline ? 0.6 : 0.3),
+                  );
+                }).where((p) => p.points.length > 1).toList(), // Выводим только если есть минимум 2 точки
+              ),
               MarkerLayer(
                 markers: nodes.map((node) {
                   final isMe = node.nodeId == myId;
@@ -145,7 +162,6 @@ class _MapScreenState extends State<MapScreen> {
                     width: 120, 
                     height: 80, 
                     child: GestureDetector(
-                      // ИЗМЕНЕНИЕ 1.25: Обработка нажатия на маркер для вывода BottomSheet
                       onTap: () {
                         showModalBottomSheet(
                           context: context,

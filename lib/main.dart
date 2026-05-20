@@ -1,16 +1,24 @@
 /*
  * Файл: main.dart
- * Версия: 1.26
- * Изменения: ЭТАП 4, Шаг 1 (Рефакторинг ядра). Файл полностью очищен от громоздкой UI-логики. Оставлена только инициализация и роутинг на экран сканера.
- * Описание: Главная точка входа в приложение.
+ * Версия: 1.29
+ * Изменения: ЭТАП 4, Шаг 15 (Путь А). Добавлена инициализация приоритетной фоновой службы (BackgroundManager) перед запуском корневого виджета. Исправлена опечатка WidgetsFlutterBinding.
+ * Описание: Главная точка входа в приложение с поддержкой фонового режима.
  */
 
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'app_config.dart';
 import 'scanner_screen.dart';
+import 'background_manager.dart';
 
-void main() {
+void main() async {
+  // Гарантируем инициализацию фреймворка перед обращением к нативным плагинам
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Инициализируем конфигурацию фонового сервиса
+  await BackgroundManager.initializeService();
+
+  // Настройка логгера Bluetooth
   FlutterBluePlus.setLogLevel(LogLevel.error, color: false);
 
   print('\n=========================================');
@@ -31,7 +39,6 @@ class NavigaTestApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueGrey),
         useMaterial3: true,
       ),
-      // Маршрутизация на новый выделенный экран сканирования
       home: const ScannerScreen(), 
     );
   }

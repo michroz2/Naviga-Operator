@@ -1,7 +1,7 @@
 /*
  * Файл: ble_service.dart
- * Версия: 1.23.2
- * Изменения: ЭТАП 2, Шаг 6 (Anchor-Sync). Добавлен автоматический запрос полной синхронизации (0x05) через 500мс после отправки опорных координат для мгновенного обновления UI кнопки карты.
+ * Версия: 1.30
+ * Изменения: ЭТАП 4, Шаг 15. Добавлен метод _updateBackgroundNotification для проброса телеметрии в изолированный фоновый поток через шину сообщений (invoke).
  * Описание: BLE-сервис управления соединением и диспетчеризации пакетов.
  */
 
@@ -10,6 +10,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 import 'ble_protocol.dart';
 import 'node_database.dart';
 import 'app_logger.dart';
@@ -60,6 +61,15 @@ class BleService {
     });
   }
 
+  // Проброс данных в фоновый процесс
+  void _updateBackgroundNotification() {
+    if (!isConnected.value) return;
+    final status = myStatusNotifier.value;
+    final deviceName = connectedDeviceName.value;
+    String content = 'Подключено: $deviceName | Батарея: ${status?.batteryPercent ?? "---"}%';
+    FlutterBackgroundService().invoke('updateNotification', {'content': content});
+  }
+
   Future<void> connectToDevice(BluetoothDevice device) async {
     await FlutterBluePlus.stopScan();
     isScanning.value = false;
@@ -96,6 +106,9 @@ class BleService {
         await _txCharacteristic!.setNotifyValue(true);
         _txCharacteristic!.lastValueStream.listen(_handleIncomingData);
         _requestIdentity();
+        
+        FlutterBackgroundService().startService();
+        Future.delayed(const Duration(seconds: 1), _updateBackgroundNotification);
       } else {
         AppLogger.logError('Не найдены нужные характеристики (TX/RX)');
       }
@@ -171,7 +184,6 @@ class BleService {
       AppLogger.logTxAnchorCoords(position.latitude, position.longitude);
       await _sendCommand(payload.toList());
 
-      // ИЗМЕНЕНИЕ 1.23.2: Отложенный на 500мс автоматический запрос актуальной топологии
       Future.delayed(const Duration(milliseconds: 500), requestFullSync);
     } catch (e) {
       AppLogger.logError('Исключение при отправке опорных координат: $e');
@@ -253,6 +265,7 @@ class BleService {
           final pkt = BleEvtMyStatus.fromBytes(data);
           AppLogger.logRxMyStatus(pkt);
           myStatusNotifier.value = pkt;
+          _updateBackgroundNotification(); // ИЗМЕНЕНИЕ 1.30: Обновляем шторку при получении телеметрии
           break;
           
         case BleOpCode.evtNodeUpdate:
@@ -289,6 +302,9 @@ class BleService {
 
   Future<void> disconnect() async {
     AppLogger.logInfo('Отключение от устройства...');
+    
+    FlutterBackgroundService().invoke('stopService');
+
     await _connectedDevice?.disconnect();
     _connectedDevice = null;
     _rxCharacteristic = null;
