@@ -1,7 +1,7 @@
 /*
  * Файл: main.dart
- * Версия: 1.22.2
- * Изменения: ЭТАП 2, Шаг 6 (Хотфикс). Блокировка кнопки перехода на карту при полном отсутствии GPS у всех узлов.
+ * Версия: 1.23.1
+ * Изменения: ЭТАП 2, Шаг 6 (Anchor-Фикс). Устранено переполнение экрана (Overflow) путем сокращения текста статуса для gpsState == 2. Кнопка Anchor добавлена для режима поиска спутников (gpsState == 0).
  * Описание: Главный экран приложения.
  */
 
@@ -15,8 +15,10 @@ import 'roster_screen.dart';
 import 'map_screen.dart';
 
 void main() {
+  FlutterBluePlus.setLogLevel(LogLevel.error, color: false);
+
   print('\n=========================================');
-  print('===== ОПЕРАТОР START version 1.22.2 =====');
+  print('===== ОПЕРАТОР START version 1.23.1 =====');
   print('=========================================\n');
   
   runApp(const NavigaTestApp());
@@ -61,7 +63,7 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Naviga v1.22.2 Setup'),
+        title: const Text('Naviga v1.23.1 Setup'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
@@ -205,9 +207,7 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
           ListenableBuilder(
             listenable: _bleService.nodeDatabase,
             builder: (context, child) {
-              // Ищем хотя бы один узел с валидными координатами
-              final hasValidGps = _bleService.nodeDatabase.nodes.values
-                  .any((n) => n.lat != 0.0 && n.lon != 0.0);
+              final hasValidGps = _bleService.nodeDatabase.hasAnyValidGps;
 
               return Card(
                 elevation: hasValidGps ? 4 : 1,
@@ -218,7 +218,7 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
                       context,
                       MaterialPageRoute(builder: (context) => const MapScreen()),
                     );
-                  } : null, // Кнопка отключена, если GPS нет ни у кого
+                  } : null, 
                   borderRadius: BorderRadius.circular(12),
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
@@ -254,6 +254,7 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
           ),
           const SizedBox(height: 10),
           
+          // --- БЛОК ТЕЛЕМЕТРИИ С ПОДДЕРЖКОЙ ANCHOR ---
           ValueListenableBuilder<BleEvtMyStatus?>(
             valueListenable: _bleService.myStatusNotifier,
             builder: (context, status, child) {
@@ -266,6 +267,32 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
                   ),
                 );
               }
+
+              String gpsText;
+              Color gpsColor;
+              bool showAnchorButton = false;
+
+              switch (status.gpsState) {
+                case 0:
+                  gpsText = 'Поиск спутников...';
+                  gpsColor = Colors.orange.shade700;
+                  showAnchorButton = true; // ИЗМЕНЕНИЕ 1.23.1: Показываем кнопку и при поиске спутников
+                  break;
+                case 1:
+                  gpsText = 'Зафиксирован (Fix OK)';
+                  gpsColor = Colors.green.shade700;
+                  showAnchorButton = false; // Скрываем кнопку, когда фикс получен
+                  break;
+                case 2:
+                  gpsText = 'Нет'; // ИЗМЕНЕНИЕ 1.23.1: Сокращено ради избежания Overflow на портретных экранах
+                  gpsColor = Colors.blueGrey;
+                  showAnchorButton = true; // Показываем кнопку для слепого реле
+                  break;
+                default:
+                  gpsText = 'Неизвестный статус (${status.gpsState})';
+                  gpsColor = Colors.red;
+              }
+
               return Card(
                 elevation: 4,
                 child: Padding(
@@ -282,8 +309,33 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
                       ),
                       const Divider(),
                       Text('Батарея: ${status.batteryPercent}% (${(status.batteryVoltage / 1000).toStringAsFixed(2)} В)', style: const TextStyle(fontSize: 16)),
-                      Text('GPS: ${status.gpsValid == 1 ? 'Зафиксирован' : 'Поиск...'}', style: const TextStyle(fontSize: 16)),
-                      Text('Спутники: ${status.satellites}', style: const TextStyle(fontSize: 16)),
+                      Row(
+                        children: [
+                          const Text('GPS: ', style: TextStyle(fontSize: 16)),
+                          Text(gpsText, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: gpsColor)),
+                        ],
+                      ),
+                      if (status.gpsState != 2)
+                        Text('Спутники: ${status.satellites}', style: const TextStyle(fontSize: 16)),
+                      
+                      // Кнопка отправки опорных координат телефона (Anchor)
+                      if (showAnchorButton) ...[
+                        const SizedBox(height: 14),
+                        const Divider(height: 1),
+                        const SizedBox(height: 12),
+                        ElevatedButton.icon(
+                          onPressed: () => _bleService.sendAnchorCoords(),
+                          icon: const Icon(Icons.pin_drop_rounded),
+                          label: const Text('ПЕРЕДАТЬ КООРДИНАТЫ СМАРТФОНА (ANCHOR)'),
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(45),
+                            backgroundColor: Colors.deepOrange.shade50,
+                            foregroundColor: Colors.deepOrange.shade800,
+                            side: BorderSide(color: Colors.deepOrange.shade200),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -377,9 +429,6 @@ class _HelloOperatorScreenState extends State<HelloOperatorScreen> {
   }
 }
 
-// ============================================================================
-// Вспомогательный класс: Ограничение длины строки в байтах UTF-8
-// ============================================================================
 class Utf8ByteLengthFormatter extends TextInputFormatter {
   final int maxBytes;
   Utf8ByteLengthFormatter(this.maxBytes);
@@ -390,9 +439,6 @@ class Utf8ByteLengthFormatter extends TextInputFormatter {
   }
 }
 
-// ============================================================================
-// ЭКРАН: Редактирование Идентификации (UC-01 + UC-08)
-// ============================================================================
 class EditIdentityScreen extends StatefulWidget {
   final BleIdentity currentIdentity;
   const EditIdentityScreen({super.key, required this.currentIdentity});
@@ -517,9 +563,6 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
   }
 }
 
-// ============================================================================
-// ЭКРАН: Редактирование Системных Таймеров
-// ============================================================================
 class EditSysConfigScreen extends StatefulWidget {
   final BleSysConfig config;
   const EditSysConfigScreen({super.key, required this.config});

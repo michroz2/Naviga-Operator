@@ -1,7 +1,7 @@
 /*
  * Файл: map_calculator.dart
- * Версия: 1.22.2
- * Изменения: ЭТАП 2, Шаг 6 (Хотфикс). Создан модуль для картографической математики.
+ * Версия: 1.22.3
+ * Изменения: ЭТАП 2, Шаг 6 (Хотфикс 2). Переход на использование свойства hasValidGps.
  * Описание: Изолированная логика вычисления границ карты (Bounds) и центрирования.
  */
 
@@ -12,17 +12,15 @@ import 'package:latlong2/latlong.dart';
 import 'node_database.dart';
 
 class MapCalculator {
-  // ~0.0018 градусов это примерно 200 метров. 
-  // Это гарантирует, что если все узлы в одной точке, зум не будет микроскопическим.
   static const double minDeltaDegrees = 0.0018;
 
   static CameraFit? calculateInitialFit(Map<int, NodeRecord> nodes, int? myNodeId) {
-    // 1. Отбираем только те узлы, у которых реально есть GPS
-    final validNodes = nodes.values.where((n) => n.lat != 0.0 && n.lon != 0.0).toList();
+    // 1. Отбираем только те узлы, у которых реально есть GPS (используем hasValidGps)
+    final validNodes = nodes.values.where((n) => n.hasValidGps).toList();
     if (validNodes.isEmpty) return null;
 
     final myNode = myNodeId != null ? nodes[myNodeId] : null;
-    final hasMyGps = myNode != null && myNode.lat != 0.0 && myNode.lon != 0.0;
+    final hasMyGps = myNode != null && myNode.hasValidGps;
 
     double minLat, maxLat, minLon, maxLon;
 
@@ -39,7 +37,7 @@ class MapCalculator {
         if (dLon > maxDLon) maxDLon = dLon;
       }
 
-      // Применяем минимальный радиус обзора (защита от чрезмерного зума)
+      // Применяем минимальный радиус обзора
       maxDLat = max(maxDLat, minDeltaDegrees);
       maxDLon = max(maxDLon, minDeltaDegrees);
 
@@ -61,7 +59,7 @@ class MapCalculator {
         if (n.lon > maxLon) maxLon = n.lon;
       }
 
-      // Защита от слишком близкого расположения соседей (или если сосед всего один)
+      // Защита от слишком близкого расположения соседей
       if ((maxLat - minLat) < minDeltaDegrees * 2) {
         final centerLat = (maxLat + minLat) / 2;
         minLat = centerLat - minDeltaDegrees;

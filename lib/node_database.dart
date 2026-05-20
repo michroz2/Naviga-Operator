@@ -1,7 +1,7 @@
 /*
  * Файл: node_database.dart
- * Версия: 1.16.1
- * Изменения: Добавлен метод initLocalNode для проактивной инъекции собственного узла на основе данных Identity.
+ * Версия: 1.22.4
+ * Изменения: ЭТАП 2, Шаг 6 (Хотфикс 3). Откат проверки hasValidGps на точное несовпадение с 0.0 во избежание ложной отбраковки.
  * Описание: Центральная база данных Roster.
  */
 
@@ -22,6 +22,9 @@ class NodeRecord {
   
   double distance; 
   double azimuth;
+
+  // ИЗМЕНЕНИЕ 1.22.4: Простая и надежная проверка на нули
+  bool get hasValidGps => lat != 0.0 && lon != 0.0;
 
   NodeRecord({
     required this.nodeId,
@@ -47,7 +50,8 @@ class NodeDatabase extends ChangeNotifier {
     return _nodes.containsKey(myNodeId) ? _nodes.length - 1 : _nodes.length;
   }
 
-  // --- ИЗМЕНЕНИЕ 1.16.1: Инъекция собственного узла ---
+  bool get hasAnyValidGps => _nodes.values.any((n) => n.hasValidGps);
+
   void initLocalNode(BleIdentity identity, int? oldNodeId) {
     final newId = identity.myNodeId;
     
@@ -68,7 +72,7 @@ class NodeDatabase extends ChangeNotifier {
         nodeId: newId,
         role: identity.myRole,
         nodeName: identity.myName,
-        lat: 0.0, // Координаты подтянутся позже из 0x15
+        lat: 0.0, // Координаты подтянутся позже
         lon: 0.0,
         snr: 0.0,
         lastSeenTimeMs: now,
@@ -98,7 +102,7 @@ class NodeDatabase extends ChangeNotifier {
         hasChanges = true;
       }
 
-      notifyListeners();
+      if (hasChanges) notifyListeners();
     });
   }
 
@@ -200,7 +204,7 @@ class NodeDatabase extends ChangeNotifier {
   }
 
   void _calcDistanceAndAzimuth(NodeRecord me, NodeRecord other) {
-    if (me.lat != 0.0 && me.lon != 0.0 && other.lat != 0.0 && other.lon != 0.0) {
+    if (me.hasValidGps && other.hasValidGps) {
       final myLatLng = LatLng(me.lat, me.lon);
       final otherLatLng = LatLng(other.lat, other.lon);
       other.distance = Distance().as(LengthUnit.Meter, myLatLng, otherLatLng).toDouble();

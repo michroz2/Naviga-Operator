@@ -1,7 +1,7 @@
 /*
  * Файл: ble_service.dart
- * Версия: 1.16.1
- * Изменения: Вызов initLocalNode при парсинге Identity для гарантированного отображения "Я" в ростере.
+ * Версия: 1.23.2
+ * Изменения: ЭТАП 2, Шаг 6 (Anchor-Sync). Добавлен автоматический запрос полной синхронизации (0x05) через 500мс после отправки опорных координат для мгновенного обновления UI кнопки карты.
  * Описание: BLE-сервис управления соединением и диспетчеризации пакетов.
  */
 
@@ -9,8 +9,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:geolocator/geolocator.dart';
 import 'ble_protocol.dart';
 import 'node_database.dart';
+import 'app_logger.dart';
 
 class BleService {
   static final BleService _instance = BleService._internal();
@@ -38,6 +40,8 @@ class BleService {
     await _scanSubscription?.cancel();
     scanResultsNotifier.value = []; 
     isScanning.value = true;
+    AppLogger.logInfo('Запуск сканирования BLE устройств...');
+    
     await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
     _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
       List<ScanResult> navigaDevices = results.where((r) {
@@ -47,22 +51,32 @@ class BleService {
       navigaDevices.sort((a, b) => b.rssi.compareTo(a.rssi));
       scanResultsNotifier.value = navigaDevices;
     });
+    
     Future.delayed(const Duration(seconds: 15), () {
-      if (isScanning.value) isScanning.value = false;
+      if (isScanning.value) {
+        isScanning.value = false;
+        AppLogger.logInfo('Сканирование завершено по таймауту');
+      }
     });
   }
 
   Future<void> connectToDevice(BluetoothDevice device) async {
     await FlutterBluePlus.stopScan();
     isScanning.value = false;
+    AppLogger.logInfo('Попытка подключения к ${device.remoteId}...');
+    
     try {
       await device.connect(license: License.free, autoConnect: false);
       _connectedDevice = device;
       connectedDeviceName.value = device.platformName.isEmpty ? device.advName : device.platformName;
       isConnected.value = true;
+      
+      AppLogger.logInfo('Подключение успешно. Запрос MTU и поиск сервисов...');
+      
       if (defaultTargetPlatform == TargetPlatform.android) {
         await device.requestMtu(128); 
       }
+      
       List<BluetoothService> services = await device.discoverServices();
       for (BluetoothService service in services) {
         if (service.uuid.toString().toLowerCase() == BleConfig.serviceUuid.toLowerCase()) {
@@ -76,32 +90,92 @@ class BleService {
           }
         }
       }
+      
       if (_txCharacteristic != null && _rxCharacteristic != null) {
+        AppLogger.logInfo('Характеристики найдены. Подписка на уведомления...');
         await _txCharacteristic!.setNotifyValue(true);
         _txCharacteristic!.lastValueStream.listen(_handleIncomingData);
         _requestIdentity();
+      } else {
+        AppLogger.logError('Не найдены нужные характеристики (TX/RX)');
       }
     } catch (e) {
       isConnected.value = false;
+      AppLogger.logError('Ошибка подключения: $e');
+    }
+  }
+
+  String _getCommandName(int opCode) {
+    switch (opCode) {
+      case BleOpCode.cmdReqIdentity: return 'cmdReqIdentity (0x06)';
+      case BleOpCode.cmdReqSysConfig: return 'cmdReqSysConfig (0x07)';
+      case BleOpCode.cmdReqFullSync: return 'cmdReqFullSync (0x05)';
+      case BleOpCode.cmdSetIdentity: return 'cmdSetIdentity (0x01)';
+      case BleOpCode.cmdSetSysConfig: return 'cmdSetSysConfig (0x02)';
+      case BleOpCode.cmdActionReset: return 'cmdActionReset (0x03)';
+      case BleOpCode.cmdSetAnchorCoords: return 'cmdSetAnchorCoords (0x08)';
+      default: return 'Неизвестная команда (0x${opCode.toRadixString(16)})';
     }
   }
 
   Future<void> _sendCommand(List<int> data) async {
     if (_rxCharacteristic == null) return;
+    if (data.isNotEmpty && data[0] != BleOpCode.cmdSetAnchorCoords) {
+      AppLogger.logTx(_getCommandName(data[0]));
+    }
     try {
       bool withoutResp = _rxCharacteristic!.properties.writeWithoutResponse;
       await _rxCharacteristic!.write(data, withoutResponse: withoutResp);
     } catch (e) {
-      debugPrint('Error sending: $e');
+      AppLogger.logError('Ошибка при отправке команды: $e');
     }
   }
 
   void _requestIdentity() => _sendCommand([BleOpCode.cmdReqIdentity]);
   void _requestSysConfig() => _sendCommand([BleOpCode.cmdReqSysConfig]);
-  
-  void requestFullSync() {
-    debugPrint('>>> Запрос полной синхронизации базы (0x05)');
-    _sendCommand([BleOpCode.cmdReqFullSync]);
+  void requestFullSync() => _sendCommand([BleOpCode.cmdReqFullSync]);
+
+  Future<void> sendAnchorCoords() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        AppLogger.logError('Геолокация на смартфоне отключена в настройках ОС.');
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          AppLogger.logError('Пользователь отклонил запрос разрешений геолокации.');
+          return;
+        }
+      }
+      
+      if (permission == LocationPermission.deniedForever) {
+        AppLogger.logError('Разрешения геолокации заблокированы навсегда в настройках смартфона.');
+        return;
+      }
+
+      AppLogger.logInfo('Запрос точных координат смартфона...');
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high
+      );
+
+      final payload = Uint8List(9);
+      final byteData = ByteData.view(payload.buffer);
+      byteData.setUint8(0, BleOpCode.cmdSetAnchorCoords);
+      byteData.setFloat32(1, position.latitude, Endian.little);
+      byteData.setFloat32(5, position.longitude, Endian.little);
+
+      AppLogger.logTxAnchorCoords(position.latitude, position.longitude);
+      await _sendCommand(payload.toList());
+
+      // ИЗМЕНЕНИЕ 1.23.2: Отложенный на 500мс автоматический запрос актуальной топологии
+      Future.delayed(const Duration(milliseconds: 500), requestFullSync);
+    } catch (e) {
+      AppLogger.logError('Исключение при отправке опорных координат: $e');
+    }
   }
 
   Future<void> setIdentity(int nodeId, String name, int role) async {
@@ -117,7 +191,7 @@ class BleService {
       await _sendCommand(payload);
       Future.delayed(const Duration(milliseconds: 300), _requestIdentity);
     } catch (e) {
-      debugPrint('Error CMD_SET_IDENTITY: $e');
+      AppLogger.logError('Ошибка CMD_SET_IDENTITY: $e');
     }
   }
 
@@ -133,7 +207,7 @@ class BleService {
       await _sendCommand(payload.toList());
       Future.delayed(const Duration(milliseconds: 300), _requestSysConfig);
     } catch (e) {
-      debugPrint('Error CMD_SET_SYS_CONFIG: $e');
+      AppLogger.logError('Ошибка CMD_SET_SYS_CONFIG: $e');
     }
   }
 
@@ -142,7 +216,7 @@ class BleService {
       await _sendCommand([BleOpCode.cmdActionReset]);
       await disconnect();
     } catch (e) {
-      debugPrint('Error Factory Reset: $e');
+      AppLogger.logError('Ошибка Factory Reset: $e');
     }
   }
 
@@ -154,11 +228,11 @@ class BleService {
     try {
       switch (opCode) {
         case BleOpCode.evtIdentity:
-          int? oldId = myId; // Запоминаем старый ID до обновления
-          identityNotifier.value = BleIdentity.fromBytes(data);
-          
-          // ИЗМЕНЕНИЕ 1.16.1: Инъекция собственного узла в базу
-          nodeDatabase.initLocalNode(identityNotifier.value!, oldId);
+          final pkt = BleIdentity.fromBytes(data);
+          AppLogger.logRxIdentity(pkt);
+          int? oldId = myId;
+          identityNotifier.value = pkt;
+          nodeDatabase.initLocalNode(pkt, oldId);
 
           if (sysConfigNotifier.value == null) {
             _requestSysConfig();
@@ -166,34 +240,55 @@ class BleService {
             nodeDatabase.startGarbageCollector(sysConfigNotifier.value!.nodeActiveTimeoutMs, identityNotifier.value?.myNodeId);
           }
           break;
+          
         case BleOpCode.evtSysConfig:
           final config = BleSysConfig.fromBytes(data);
+          AppLogger.logRxSysConfig(config);
           sysConfigNotifier.value = config;
           nodeDatabase.startGarbageCollector(config.nodeActiveTimeoutMs, myId);
           requestFullSync();
           break;
+          
         case BleOpCode.evtMyStatus:
-          myStatusNotifier.value = BleEvtMyStatus.fromBytes(data);
+          final pkt = BleEvtMyStatus.fromBytes(data);
+          AppLogger.logRxMyStatus(pkt);
+          myStatusNotifier.value = pkt;
           break;
+          
         case BleOpCode.evtNodeUpdate:
-          nodeDatabase.updateNodeFull(BleEvtNodeUpdate.fromBytes(data), myId);
+          final pkt = BleEvtNodeUpdate.fromBytes(data);
+          AppLogger.logRxNodeUpdate(pkt);
+          nodeDatabase.updateNodeFull(pkt, myId);
           break;
+          
         case BleOpCode.evtNodeDelete:
-          nodeDatabase.deleteNode(BleEvtNodeDelete.fromBytes(data).nodeId);
+          final pkt = BleEvtNodeDelete.fromBytes(data);
+          AppLogger.logInfo('⬅ 0x14 (EVT_NODE_DELETE) | Удаление узла: ${pkt.nodeId}');
+          nodeDatabase.deleteNode(pkt.nodeId);
           break;
+          
         case BleOpCode.evtNodeCoords:
-          nodeDatabase.updateNodeCoords(BleEvtNodeCoords.fromBytes(data), myId);
+          final pkt = BleEvtNodeCoords.fromBytes(data);
+          AppLogger.logRxNodeCoords(pkt);
+          nodeDatabase.updateNodeCoords(pkt, myId);
           break;
+          
         case BleOpCode.evtNodeInfo:
-          nodeDatabase.updateNodeInfo(BleEvtNodeInfo.fromBytes(data), myId);
+          final pkt = BleEvtNodeInfo.fromBytes(data);
+          AppLogger.logRxNodeInfo(pkt);
+          nodeDatabase.updateNodeInfo(pkt, myId);
           break;
+          
+        default:
+          AppLogger.logError('Получен неизвестный код операции: 0x${opCode.toRadixString(16)}');
       }
     } catch (e) {
-      debugPrint('Parsing error 0x${opCode.toRadixString(16)}: $e');
+      AppLogger.logError('Ошибка парсинга пакета 0x${opCode.toRadixString(16)}: $e');
     }
   }
 
   Future<void> disconnect() async {
+    AppLogger.logInfo('Отключение от устройства...');
     await _connectedDevice?.disconnect();
     _connectedDevice = null;
     _rxCharacteristic = null;
@@ -206,5 +301,6 @@ class BleService {
     sysConfigNotifier.value = null;
     myStatusNotifier.value = null;
     nodeDatabase.clear();
+    AppLogger.logInfo('Сессия завершена, данные очищены.');
   }
 }
