@@ -1,8 +1,8 @@
 /*
  * Файл: node_database.dart
- * Версия: 1.22.4
- * Изменения: ЭТАП 2, Шаг 6 (Хотфикс 3). Откат проверки hasValidGps на точное несовпадение с 0.0 во избежание ложной отбраковки.
- * Описание: Центральная база данных Roster.
+ * Версия: 1.27
+ * Изменения: ЭТАП 4, Шаг 12. Внедрение структуры TrackPoint и кольцевого буфера истории перемещений (track). Добавлен анти-джиттер фильтр (10м) с инициализацией через 50 фиктивных нулевых точек.
+ * Описание: Центральная база данных Roster с поддержкой трекинга.
  */
 
 import 'dart:async';
@@ -10,6 +10,20 @@ import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 import 'ble_protocol.dart';
 
+// ============================================================================
+// Структура точки для хвоста истории (Track)
+// ============================================================================
+class TrackPoint {
+  final double lat;
+  final double lon;
+  final int timestampMs;
+
+  TrackPoint({required this.lat, required this.lon, required this.timestampMs});
+}
+
+// ============================================================================
+// Запись Узла
+// ============================================================================
 class NodeRecord {
   final int nodeId;
   int role;         
@@ -23,7 +37,11 @@ class NodeRecord {
   double distance; 
   double azimuth;
 
-  // ИЗМЕНЕНИЕ 1.22.4: Простая и надежная проверка на нули
+  // ИЗМЕНЕНИЕ 1.27: Кольцевой буфер истории координат
+  List<TrackPoint> track = [];
+  static const int maxTrackPoints = 50;
+  static const double trackJitterMeters = 10.0;
+
   bool get hasValidGps => lat != 0.0 && lon != 0.0;
 
   NodeRecord({
@@ -37,8 +55,48 @@ class NodeRecord {
     this.distance = 0.0,
     this.azimuth = 0.0,
   });
+
+  // ИЗМЕНЕНИЕ 1.27: Метод добавления точки в трек с анти-джиттером
+  void _addPointToTrack(double newLat, double newLon, int timestamp) {
+    if (newLat == 0.0 || newLon == 0.0) return;
+
+    final newPoint = LatLng(newLat, newLon);
+
+    // 1. Инициализация буфера (50 нулевых клонов + 1 актуальный)
+    if (track.isEmpty) {
+      for (int i = 0; i < maxTrackPoints - 1; i++) {
+        track.add(TrackPoint(lat: newLat, lon: newLon, timestampMs: 0));
+      }
+      track.add(TrackPoint(lat: newLat, lon: newLon, timestampMs: timestamp));
+      return;
+    }
+
+    // 2. Анти-джиттер: проверка дистанции до последней добавленной точки (track.last)
+    // Благодаря инициализации 50 клонами, track.last всегда существует.
+    final lastPoint = LatLng(track.last.lat, track.last.lon);
+    final distToLast = Distance().as(LengthUnit.Meter, lastPoint, newPoint).toDouble();
+
+    // Если ушли дальше порога - сдвигаем буфер
+    if (distToLast >= trackJitterMeters) {
+      track.removeAt(0); // Удаляем самую старую
+      track.add(TrackPoint(lat: newLat, lon: newLon, timestampMs: timestamp));
+    }
+  }
+
+  // Вспомогательный метод для получения актуального хвоста для отрисовки
+  List<LatLng> getRecentTrack(int maxAgeMs) {
+    if (track.isEmpty) return [];
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return track
+        .where((p) => p.timestampMs != 0 && (now - p.timestampMs) <= maxAgeMs)
+        .map((p) => LatLng(p.lat, p.lon))
+        .toList();
+  }
 }
 
+// ============================================================================
+// База Данных Узлов
+// ============================================================================
 class NodeDatabase extends ChangeNotifier {
   final Map<int, NodeRecord> _nodes = {};
   Timer? _gcTimer;
@@ -55,7 +113,6 @@ class NodeDatabase extends ChangeNotifier {
   void initLocalNode(BleIdentity identity, int? oldNodeId) {
     final newId = identity.myNodeId;
     
-    // Если произошла коллизия и Донгл сменил ID - удаляем фантома
     if (oldNodeId != null && oldNodeId != newId) {
       _nodes.remove(oldNodeId);
       debugPrint('NodeDatabase: ID изменен с $oldNodeId на $newId. Старый узел удален.');
@@ -72,7 +129,7 @@ class NodeDatabase extends ChangeNotifier {
         nodeId: newId,
         role: identity.myRole,
         nodeName: identity.myName,
-        lat: 0.0, // Координаты подтянутся позже
+        lat: 0.0,
         lon: 0.0,
         snr: 0.0,
         lastSeenTimeMs: now,
@@ -88,7 +145,7 @@ class NodeDatabase extends ChangeNotifier {
       final List<int> toDelete = [];
 
       _nodes.forEach((id, node) {
-        if (id == currentMyNodeId) return; // Свой узел имеет иммунитет
+        if (id == currentMyNodeId) return; 
 
         if ((now - node.lastSeenTimeMs) > activeTimeoutMs) {
           toDelete.add(id);
@@ -118,8 +175,9 @@ class NodeDatabase extends ChangeNotifier {
       node.lon = update.lon;
       node.snr = update.snr;
       node.lastSeenTimeMs = normalizedTime;
+      node._addPointToTrack(update.lat, update.lon, normalizedTime); // ИЗМЕНЕНИЕ 1.27
     } else {
-      _nodes[update.nodeId] = NodeRecord(
+      final node = NodeRecord(
         nodeId: update.nodeId,
         role: update.nodeRole,
         nodeName: update.nodeName,
@@ -128,6 +186,8 @@ class NodeDatabase extends ChangeNotifier {
         snr: update.snr,
         lastSeenTimeMs: normalizedTime,
       );
+      node._addPointToTrack(update.lat, update.lon, normalizedTime); // ИЗМЕНЕНИЕ 1.27
+      _nodes[update.nodeId] = node;
     }
     _runGeometryUpdate(update.nodeId, myNodeId);
     notifyListeners();
@@ -142,8 +202,9 @@ class NodeDatabase extends ChangeNotifier {
       node.lon = update.lon;
       node.snr = update.snr;
       node.lastSeenTimeMs = now; 
+      node._addPointToTrack(update.lat, update.lon, now); // ИЗМЕНЕНИЕ 1.27
     } else {
-      _nodes[update.nodeId] = NodeRecord(
+      final node = NodeRecord(
         nodeId: update.nodeId,
         role: 1, 
         nodeName: "Node ${update.nodeId}",
@@ -152,6 +213,8 @@ class NodeDatabase extends ChangeNotifier {
         snr: update.snr,
         lastSeenTimeMs: now,
       );
+      node._addPointToTrack(update.lat, update.lon, now); // ИЗМЕНЕНИЕ 1.27
+      _nodes[update.nodeId] = node;
     }
     _runGeometryUpdate(update.nodeId, myNodeId);
     notifyListeners();
