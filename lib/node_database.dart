@@ -1,7 +1,7 @@
 /*
  * Файл: node_database.dart
- * Версия: 1.31
- * Изменения: Обновлен анти-джиттер фильтр трека (добавлена константа trackJitterPointsToCheck = 3, проверка 3 последних точек).
+ * Версия: 1.31.1
+ * Изменения: Хотфикс отрисовки трека. В getRecentTrack всегда добавляется текущая позиция узла, чтобы исключить визуальный разрыв между "хвостом" и маркером.
  * Описание: Центральная база данных Roster с поддержкой трекинга.
  */
 
@@ -105,10 +105,18 @@ class NodeRecord {
   List<LatLng> getRecentTrack(int maxAgeMs) {
     if (track.isEmpty) return [];
     final now = DateTime.now().millisecondsSinceEpoch;
-    return track
+    
+    List<LatLng> recent = track
         .where((p) => p.timestampMs != 0 && (now - p.timestampMs) <= maxAgeMs)
         .map((p) => LatLng(p.lat, p.lon))
         .toList();
+
+    // ИЗМЕНЕНИЕ 1.31.1: Принудительно добавляем текущую позицию узла в конец трека
+    if (hasValidGps) {
+      recent.add(LatLng(lat, lon));
+    }
+
+    return recent;
   }
 }
 
