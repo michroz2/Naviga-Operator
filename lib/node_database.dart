@@ -1,7 +1,7 @@
 /*
  * Файл: node_database.dart
- * Версия: 1.27
- * Изменения: ЭТАП 4, Шаг 12. Внедрение структуры TrackPoint и кольцевого буфера истории перемещений (track). Добавлен анти-джиттер фильтр (10м) с инициализацией через 50 фиктивных нулевых точек.
+ * Версия: 1.31
+ * Изменения: Обновлен анти-джиттер фильтр трека (добавлена константа trackJitterPointsToCheck = 3, проверка 3 последних точек).
  * Описание: Центральная база данных Roster с поддержкой трекинга.
  */
 
@@ -34,13 +34,14 @@ class NodeRecord {
   
   int lastSeenTimeMs; // Абсолютное Unix-время последнего контакта
   
-  double distance; 
+  double distance;  
   double azimuth;
 
-  // ИЗМЕНЕНИЕ 1.27: Кольцевой буфер истории координат
+  // Кольцевой буфер истории координат и настройки анти-джиттера
   List<TrackPoint> track = [];
   static const int maxTrackPoints = 50;
   static const double trackJitterMeters = 10.0;
+  static const int trackJitterPointsToCheck = 3; 
 
   bool get hasValidGps => lat != 0.0 && lon != 0.0;
 
@@ -56,7 +57,7 @@ class NodeRecord {
     this.azimuth = 0.0,
   });
 
-  // ИЗМЕНЕНИЕ 1.27: Метод добавления точки в трек с анти-джиттером
+  // Метод добавления точки в трек с фильтром по 3 последним точкам
   void _addPointToTrack(double newLat, double newLon, int timestamp) {
     if (newLat == 0.0 || newLon == 0.0) return;
 
@@ -71,15 +72,32 @@ class NodeRecord {
       return;
     }
 
-    // 2. Анти-джиттер: проверка дистанции до последней добавленной точки (track.last)
-    // Благодаря инициализации 50 клонами, track.last всегда существует.
-    final lastPoint = LatLng(track.last.lat, track.last.lon);
-    final distToLast = Distance().as(LengthUnit.Meter, lastPoint, newPoint).toDouble();
+    // 2. Анти-джиттер: проверка дистанции до N последних добавленных точек
+    bool isJitter = false;
+    int pointsToCheck = trackJitterPointsToCheck;
+    
+    // Защита: проверяем не больше точек, чем есть в буфере
+    if (track.length < pointsToCheck) {
+      pointsToCheck = track.length;
+    }
 
-    // Если ушли дальше порога - сдвигаем буфер
-    if (distToLast >= trackJitterMeters) {
-      track.removeAt(0); // Удаляем самую старую
-      track.add(TrackPoint(lat: newLat, lon: newLon, timestampMs: timestamp));
+    // Проверяем с конца массива (track.length - 1 это Точка-1, track.length - 2 это Точка-2 и т.д.)
+    for (int i = 1; i <= pointsToCheck; i++) {
+      final checkPoint = track[track.length - i];
+      final pLatLng = LatLng(checkPoint.lat, checkPoint.lon);
+      final dist = Distance().as(LengthUnit.Meter, pLatLng, newPoint).toDouble();
+      
+      // Если хотя бы одна из проверяемых точек ближе порога - считаем это джиттером/стоянкой
+      if (dist < trackJitterMeters) {
+        isJitter = true;
+        break; 
+      }
+    }
+
+    // Если новая точка дальше порога от ВСЕХ 3 последних точек - сдвигаем буфер
+    if (!isJitter) {
+      track.removeAt(0); // Удаляем самую старую в начале
+      track.add(TrackPoint(lat: newLat, lon: newLon, timestampMs: timestamp)); // Добавляем новую в конец
     }
   }
 
@@ -175,7 +193,7 @@ class NodeDatabase extends ChangeNotifier {
       node.lon = update.lon;
       node.snr = update.snr;
       node.lastSeenTimeMs = normalizedTime;
-      node._addPointToTrack(update.lat, update.lon, normalizedTime); // ИЗМЕНЕНИЕ 1.27
+      node._addPointToTrack(update.lat, update.lon, normalizedTime); 
     } else {
       final node = NodeRecord(
         nodeId: update.nodeId,
@@ -186,7 +204,7 @@ class NodeDatabase extends ChangeNotifier {
         snr: update.snr,
         lastSeenTimeMs: normalizedTime,
       );
-      node._addPointToTrack(update.lat, update.lon, normalizedTime); // ИЗМЕНЕНИЕ 1.27
+      node._addPointToTrack(update.lat, update.lon, normalizedTime); 
       _nodes[update.nodeId] = node;
     }
     _runGeometryUpdate(update.nodeId, myNodeId);
@@ -202,7 +220,7 @@ class NodeDatabase extends ChangeNotifier {
       node.lon = update.lon;
       node.snr = update.snr;
       node.lastSeenTimeMs = now; 
-      node._addPointToTrack(update.lat, update.lon, now); // ИЗМЕНЕНИЕ 1.27
+      node._addPointToTrack(update.lat, update.lon, now); 
     } else {
       final node = NodeRecord(
         nodeId: update.nodeId,
@@ -213,7 +231,7 @@ class NodeDatabase extends ChangeNotifier {
         snr: update.snr,
         lastSeenTimeMs: now,
       );
-      node._addPointToTrack(update.lat, update.lon, now); // ИЗМЕНЕНИЕ 1.27
+      node._addPointToTrack(update.lat, update.lon, now); 
       _nodes[update.nodeId] = node;
     }
     _runGeometryUpdate(update.nodeId, myNodeId);
