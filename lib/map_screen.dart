@@ -1,15 +1,17 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.33.1
- * Изменения: UC-23, Шаг 1. Добавлен компонент MapScaleBar для динамического отображения масштабной линейки в левом нижнем углу карты.
+ * Версия: 1.33.6
+ * Изменения: Хотфикс UC-23. Добавлен флаг _isMapReady и коллбэк onMapReady для предотвращения LateInitializationError при попытке вращения карты до её полной отрисовки.
  * Описание: Экран визуализации узлов на интерактивной карте.
  */
 
 import 'dart:math' as math;
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:flutter_compass/flutter_compass.dart'; 
 import 'ble_service.dart';
 import 'node_database.dart';
 import 'roster_screen.dart'; 
@@ -78,26 +80,21 @@ class MapScaleBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Получаем текущее состояние камеры карты
     final camera = MapCamera.of(context);
     final lat = camera.center.latitude;
     final zoom = camera.zoom;
 
-    // Расчет метров в одном пикселе для текущей широты и зума (EPSG:3857)
     final metersPerPixel = (math.cos(lat * math.pi / 180) * 2 * math.pi * 6378137) / (256 * math.pow(2, zoom));
     
-    // Предустановленные красивые шаги линейки в метрах
     final List<double> scaleSteps = [
       1, 2, 5, 10, 20, 50, 100, 200, 500, 
       1000, 2000, 5000, 10000, 20000, 50000, 
       100000, 200000, 500000, 1000000, 2000000, 5000000
     ];
     
-    // Целевая ширина линейки около 100 пикселей
     const double targetPixels = 100.0;
     final double distanceMeters = targetPixels * metersPerPixel;
     
-    // Ищем наиболее подходящий шаг
     double selectedScale = scaleSteps.first;
     for (var step in scaleSteps) {
       if (distanceMeters >= step) {
@@ -107,10 +104,8 @@ class MapScaleBar extends StatelessWidget {
       }
     }
     
-    // Вычисляем фактическую ширину плашки в пикселях
     final double scaleWidth = selectedScale / metersPerPixel;
     
-    // Формируем подпись
     final String label = selectedScale >= 1000 
         ? '${(selectedScale / 1000).toStringAsFixed(0)} км' 
         : '${selectedScale.toStringAsFixed(0)} м';
@@ -153,6 +148,49 @@ class MapScaleBar extends StatelessWidget {
 }
 
 // ============================================================================
+// Компонент: Интерактивный компас
+// ============================================================================
+class MapCompassWidget extends StatelessWidget {
+  const MapCompassWidget({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final camera = MapCamera.of(context);
+    final rotation = camera.rotation; // Угол поворота карты в градусах
+    final mode = AppSettings().compassMode;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 16.0, right: 16.0),
+      child: GestureDetector(
+        onTap: () {
+          // Цикличное переключение: 0 -> 1 -> 2 -> 0
+          AppSettings().setCompassMode((mode + 1) % 3);
+        },
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.85),
+            shape: BoxShape.circle,
+            boxShadow: const [
+              BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))
+            ],
+          ),
+          child: Transform.rotate(
+            angle: rotation * math.pi / 180,
+            child: Icon(
+              Icons.navigation, // Стрелка
+              color: mode == 2 ? Colors.blue.shade700 : Colors.blueGrey,
+              size: 28,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
 // Экран Карты
 // ============================================================================
 class MapScreen extends StatefulWidget {
@@ -165,22 +203,73 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   final BleService _bleService = BleService();
   final MapController _mapController = MapController();
+  
+  StreamSubscription<CompassEvent>? _compassSubscription;
+  late int _lastCompassMode;
+  
+  // ИЗМЕНЕНИЕ 1.33.6: Флаг готовности карты
+  bool _isMapReady = false;
 
   @override
   void initState() {
     super.initState();
+    _lastCompassMode = AppSettings().compassMode;
+    
     if (AppSettings().keepScreenOn) {
       WakelockPlus.enable();
       debugPrint('Wakelock: Экран заблокирован от засыпания (только на Карте)');
     }
+
+    AppSettings().addListener(_onSettingsChanged);
+    
+    // ИЗМЕНЕНИЕ 1.33.6: Мы больше не вызываем _applyCompassMode() здесь!
+    // Карта еще не создана. Мы ждем коллбэк onMapReady.
   }
 
   @override
   void dispose() {
+    AppSettings().removeListener(_onSettingsChanged);
+    _compassSubscription?.cancel();
+    
     WakelockPlus.disable();
     debugPrint('Wakelock: Ограничение сна экрана снято при выходе из Карты');
+    
     _mapController.dispose();
     super.dispose();
+  }
+
+  void _onSettingsChanged() {
+    if (_lastCompassMode != AppSettings().compassMode) {
+      _lastCompassMode = AppSettings().compassMode;
+      _applyCompassMode();
+    }
+  }
+
+  void _applyCompassMode() {
+    // ИЗМЕНЕНИЕ 1.33.6: Защита от обращения к контроллеру до готовности карты
+    if (!_isMapReady) return;
+
+    final mode = AppSettings().compassMode;
+    
+    if (mode == 2) {
+      // Режим 2: Следование за датчиком смартфона
+      if (_compassSubscription == null) {
+        _compassSubscription = FlutterCompass.events?.listen((event) {
+          if (event.heading != null && mounted) {
+            _mapController.rotate(360 - event.heading!);
+          }
+        });
+      }
+    } else {
+      // Режим 0 и 1: Отключаем аппаратный датчик
+      _compassSubscription?.cancel();
+      _compassSubscription = null;
+      
+      if (mode == 0) {
+        // Жесткий сброс на Север
+        _mapController.rotate(0);
+      }
+    }
   }
 
   String _getRoleName(int roleCode) {
@@ -221,11 +310,24 @@ class _MapScreenState extends State<MapScreen> {
             initialCenter = LatLng(myNode.lat, myNode.lon);
           }
 
+          int interactiveFlags = InteractiveFlag.all;
+          if (AppSettings().compassMode != 1) {
+            interactiveFlags = InteractiveFlag.all & ~InteractiveFlag.rotate;
+          }
+
           return FlutterMap(
             mapController: _mapController,
             options: MapOptions(
               initialCenter: initialCenter,
               initialZoom: 15.0,
+              interactionOptions: InteractionOptions(
+                flags: interactiveFlags,
+              ),
+              // ИЗМЕНЕНИЕ 1.33.6: Безопасный запуск компаса после рендеринга
+              onMapReady: () {
+                _isMapReady = true;
+                _applyCompassMode();
+              },
             ),
             children: [
               TileLayer(
@@ -320,10 +422,13 @@ class _MapScreenState extends State<MapScreen> {
                   );
                 }).toList(),
               ),
-              // Масштабная линейка в левом нижнем углу
               const Align(
                 alignment: Alignment.bottomLeft,
                 child: MapScaleBar(),
+              ),
+              const Align(
+                alignment: Alignment.topRight,
+                child: SafeArea(child: MapCompassWidget()),
               ),
             ],
           );

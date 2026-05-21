@@ -1,6 +1,6 @@
 # Файл: pubspec.yaml
-# Версия: 1.20
-# Изменения: ЭТАП Настроек, Шаг 7 (v1.32.7). Добавлен wakelock_plus для предотвращения засыпания экрана.
+# Версия: 1.21
+# Изменения: UC-23, Шаги 3 и 4. Добавлен пакет flutter_compass для аппаратного вращения карты.
 # Описание: Конфигурация пакетов, ресурсов и зависимостей проекта.
 
 name: naviga_operator
@@ -48,7 +48,8 @@ dependencies:
   flutter_background_service: ^5.0.5
   flutter_local_notifications: ^17.1.2
   shared_preferences: ^2.2.2 
-  wakelock_plus: ^1.2.8 # ИЗМЕНЕНИЕ 1.32.7: Пакет для удержания экрана
+  wakelock_plus: ^1.2.8 
+  flutter_compass: ^0.8.0 # ИЗМЕНЕНИЕ 1.33.3: Пакет для интерактивного компаса
 
 dev_dependencies:
   flutter_test:

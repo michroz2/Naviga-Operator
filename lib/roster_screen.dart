@@ -1,7 +1,8 @@
 /*
  * Файл: roster_screen.dart
- * Версия: 1.16
- * Изменения: Динамическое вычисление статуса Offline на основе lastSeenTimeMs. Визуализация потери связи.
+ * Версия: 1.33.5
+ * Изменения: Хотфикс UI. Полный переход на семантические цвета (Theme.of(context).colorScheme) для поддержки корректного отображения в тёмной теме. Убраны жёстко заданные цвета.
+ * Описание: Экран отображения базы узлов (Ростер).
  */
 
 import 'package:flutter/material.dart';
@@ -43,17 +44,18 @@ class RosterScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bleService = BleService();
+    final colorScheme = Theme.of(context).colorScheme; // Получаем текущую цветовую схему
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Топология Сети'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        backgroundColor: colorScheme.inversePrimary,
       ),
       body: ListenableBuilder(
         listenable: Listenable.merge([
           bleService.nodeDatabase, 
           bleService.identityNotifier,
-          bleService.sysConfigNotifier, // ИЗМЕНЕНИЕ 1.16: Подписка на конфиг для таймаута
+          bleService.sysConfigNotifier, 
         ]),
         builder: (context, child) {
           final nodesMap = bleService.nodeDatabase.nodes;
@@ -91,31 +93,30 @@ class RosterScreen extends StatelessWidget {
               final node = sortedNodes[index];
               final isMe = node.nodeId == myNodeId;
               
-              // ИЗМЕНЕНИЕ 1.16: Динамический статус Offline
               final isOnline = isMe ? true : (now - node.lastSeenTimeMs) <= connTimeoutMs;
 
               return Opacity(
-                opacity: isOnline ? 1.0 : 0.4,
+                opacity: isOnline ? 1.0 : 0.5,
                 child: Card(
                   margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  color: isMe ? Colors.blue.shade50 : null,
+                  color: isMe ? colorScheme.primaryContainer : null,
                   child: ListTile(
                     leading: CircleAvatar(
-                      backgroundColor: isMe ? Colors.blue.shade200 : (isOnline ? Colors.grey.shade300 : Colors.grey.shade400),
-                      child: Icon(_getRoleIcon(node.role, isMe), color: isOnline ? Colors.black87 : Colors.black54),
+                      backgroundColor: isMe ? colorScheme.primary : (isOnline ? colorScheme.secondaryContainer : colorScheme.surfaceVariant),
+                      child: Icon(_getRoleIcon(node.role, isMe), color: isMe ? colorScheme.onPrimary : (isOnline ? colorScheme.onSecondaryContainer : colorScheme.onSurfaceVariant)),
                     ),
                     title: Text(
                       node.nodeName, 
                       style: TextStyle(
                         fontWeight: FontWeight.bold, 
-                        color: isMe ? Colors.blue.shade800 : (isOnline ? Colors.black : Colors.black54)
+                        color: isMe ? colorScheme.onPrimaryContainer : (isOnline ? colorScheme.onSurface : colorScheme.onSurfaceVariant)
                       )
                     ),
                     subtitle: Text(
                       _getDistanceText(node, isMe, hasMyGps, isOnline),
-                      style: TextStyle(color: isOnline ? Colors.black87 : Colors.red.shade900)
+                      style: TextStyle(color: isOnline ? colorScheme.onSurfaceVariant : colorScheme.error)
                     ),
-                    trailing: const Icon(Icons.info_outline, color: Colors.grey),
+                    trailing: Icon(Icons.info_outline, color: colorScheme.onSurfaceVariant),
                     onTap: () {
                       showModalBottomSheet(
                         context: context,
@@ -160,6 +161,7 @@ class NodeDetailsSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final now = DateTime.now().millisecondsSinceEpoch;
     final secondsAgo = ((now - node.lastSeenTimeMs) / 1000).toStringAsFixed(1);
+    final colorScheme = Theme.of(context).colorScheme; // Получаем схему для модального окна
 
     return Padding(
       padding: const EdgeInsets.all(24.0),
@@ -168,49 +170,49 @@ class NodeDetailsSheet extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Center(
-            child: Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(10))),
+            child: Container(width: 40, height: 5, decoration: BoxDecoration(color: colorScheme.outlineVariant, borderRadius: BorderRadius.circular(10))),
           ),
           const SizedBox(height: 20),
           Row(
             children: [
-              Icon(isMe ? Icons.person_pin : Icons.device_hub, size: 32, color: isMe ? Colors.blue : (isOnline ? Colors.black : Colors.grey)),
+              Icon(isMe ? Icons.person_pin : Icons.device_hub, size: 32, color: isMe ? colorScheme.primary : (isOnline ? colorScheme.onSurface : colorScheme.onSurfaceVariant)),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   node.nodeName,
-                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: isOnline ? Colors.green.shade100 : Colors.red.shade100, 
+                  color: isOnline ? Colors.green.withOpacity(0.15) : colorScheme.errorContainer, 
                   borderRadius: BorderRadius.circular(15)
                 ),
                 child: Text(
                   isOnline ? 'ONLINE' : 'OFFLINE', 
-                  style: TextStyle(fontWeight: FontWeight.bold, color: isOnline ? Colors.green.shade800 : Colors.red.shade800)
+                  style: TextStyle(fontWeight: FontWeight.bold, color: isOnline ? Colors.green : colorScheme.onErrorContainer)
                 ),
               ),
             ],
           ),
           const Divider(height: 30),
           
-          _buildInfoRow(Icons.badge, 'Роль', roleName),
-          _buildInfoRow(Icons.location_on, 'Координаты', node.lat == 0.0 ? 'Не зафиксированы' : '${node.lat.toStringAsFixed(6)}, ${node.lon.toStringAsFixed(6)}'),
+          _buildInfoRow(Icons.badge, 'Роль', roleName, colorScheme),
+          _buildInfoRow(Icons.location_on, 'Координаты', node.lat == 0.0 ? 'Не зафиксированы' : '${node.lat.toStringAsFixed(6)}, ${node.lon.toStringAsFixed(6)}', colorScheme),
           
           if (!isMe && node.lat != 0.0) ...[
-            _buildInfoRow(Icons.straighten, 'Дистанция', '${node.distance.toStringAsFixed(1)} м'),
-            _buildInfoRow(Icons.explore, 'Азимут', '${node.azimuth.toStringAsFixed(1)}°'),
-            _buildInfoRow(Icons.signal_cellular_alt, 'Уровень сигнала (SNR)', '${node.snr} dB'),
-            _buildInfoRow(Icons.access_time, 'Последний контакт', '$secondsAgo сек. назад'),
+            _buildInfoRow(Icons.straighten, 'Дистанция', '${node.distance.toStringAsFixed(1)} м', colorScheme),
+            _buildInfoRow(Icons.explore, 'Азимут', '${node.azimuth.toStringAsFixed(1)}°', colorScheme),
+            _buildInfoRow(Icons.signal_cellular_alt, 'Уровень сигнала (SNR)', '${node.snr} dB', colorScheme),
+            _buildInfoRow(Icons.access_time, 'Последний контакт', '$secondsAgo сек. назад', colorScheme),
           ],
           
           if (isMe) 
-            const Padding(
-              padding: EdgeInsets.only(top: 10),
-              child: Text('Это ваш собственный узел. Дистанция не применима.', style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic)),
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text('Это ваш собственный узел. Дистанция не применима.', style: TextStyle(color: colorScheme.onSurfaceVariant, fontStyle: FontStyle.italic)),
             ),
 
           const SizedBox(height: 20),
@@ -219,16 +221,16 @@ class NodeDetailsSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoRow(IconData icon, String label, String value) {
+  Widget _buildInfoRow(IconData icon, String label, String value, ColorScheme colorScheme) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Row(
         children: [
-          Icon(icon, color: Colors.blueGrey, size: 20),
+          Icon(icon, color: colorScheme.primary, size: 20),
           const SizedBox(width: 12),
-          Text('$label:', style: const TextStyle(fontSize: 16, color: Colors.blueGrey)),
+          Text('$label:', style: TextStyle(fontSize: 16, color: colorScheme.onSurfaceVariant)),
           const SizedBox(width: 8),
-          Expanded(child: Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+          Expanded(child: Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: colorScheme.onSurface))),
         ],
       ),
     );
