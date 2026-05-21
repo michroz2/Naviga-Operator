@@ -1,7 +1,7 @@
 /*
  * Файл: settings_screen.dart
- * Версия: 1.32.2
- * Изменения: ЭТАП Настроек, Шаг 3. Реализован буфер редактирования. Добавлены кнопки "Отменить изменения" и "По умолчанию" с диалогом подтверждения.
+ * Версия: 1.33.2
+ * Изменения: UC-23, Шаг 2. Добавлен UI для управления отображением сетки и выбором дефолтного режима компаса.
  * Описание: Экран управления локальными настройками приложения.
  */
 
@@ -25,6 +25,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late int _jitterPoints;
   late bool _keepScreenOn;
   late bool _darkTheme;
+  late bool _showGrid;
+  late int _compassMode;
 
   // Флаг, указывающий, что пользователь явно отменил изменения
   bool _isCancelled = false;
@@ -38,6 +40,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     0: 'Не ограничено',
   };
 
+  final Map<int, String> _compassOptions = {
+    0: 'Север всегда сверху',
+    1: 'Свободное вращение',
+    2: 'По магнитному компасу',
+  };
+
   @override
   void initState() {
     super.initState();
@@ -48,6 +56,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _jitterPoints = _settings.jitterPoints;
     _keepScreenOn = _settings.keepScreenOn;
     _darkTheme = _settings.darkTheme;
+    _showGrid = _settings.showGrid;
+    _compassMode = _settings.compassMode;
   }
 
   // Метод сохранения локального буфера в глобальные настройки
@@ -58,6 +68,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _settings.setJitterPoints(_jitterPoints);
     _settings.setKeepScreenOn(_keepScreenOn);
     _settings.setDarkTheme(_darkTheme);
+    _settings.setShowGrid(_showGrid);
+    _settings.setCompassMode(_compassMode);
   }
 
   // Диалог подтверждения сброса настроек по умолчанию
@@ -84,6 +96,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _jitterPoints = 3;
                   _keepScreenOn = false;
                   _darkTheme = false;
+                  _showGrid = false;
+                  _compassMode = 0;
                 });
               },
               style: TextButton.styleFrom(foregroundColor: Colors.orange.shade900),
@@ -115,6 +129,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           padding: const EdgeInsets.symmetric(vertical: 16.0),
           children: [
             _buildSectionHeader(Icons.map, 'Визуализация на карте'),
+            SwitchListTile(
+              title: const Text('Координатная сетка', style: TextStyle(fontWeight: FontWeight.w500)),
+              subtitle: const Text('Отображение географической сетки поверх карты'),
+              value: _showGrid,
+              onChanged: (val) => setState(() => _showGrid = val),
+            ),
+            _buildDropdownRow(
+              'Режим компаса',
+              _compassMode,
+              _compassOptions,
+              (val) => setState(() => _compassMode = val as int),
+            ),
             _buildDropdownRow(
               'Время отображения трека',
               _trackTimeMs,

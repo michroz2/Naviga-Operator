@@ -1,7 +1,7 @@
 /*
  * Файл: app_settings.dart
- * Версия: 1.32.8
- * Изменения: ЭТАП Настроек, Шаг 8. Логика Wakelock удалена из глобального класса настроек и перенесена в слой UI карты.
+ * Версия: 1.33.2
+ * Изменения: UC-23, Шаг 2. Внедрение параметров showGrid и compassMode для управления навигационными элементами карты.
  * Описание: Менеджер локальных настроек приложения.
  */
 
@@ -22,6 +22,10 @@ class AppSettings extends ChangeNotifier {
   int _jitterPoints = 3;
   bool _keepScreenOn = false;
   bool _darkTheme = false;
+  
+  // Новые параметры UC-23
+  bool _showGrid = false;
+  int _compassMode = 0; // 0 - Север сверху, 1 - Свободное вращение, 2 - Магнитный компас
 
   // --- Инициализация (вызывается при старте приложения) ---
   Future<void> init() async {
@@ -40,6 +44,9 @@ class AppSettings extends ChangeNotifier {
     _keepScreenOn = _prefs!.getBool('keepScreenOn') ?? false;
     _darkTheme = _prefs!.getBool('darkTheme') ?? false;
     
+    _showGrid = _prefs!.getBool('showGrid') ?? false;
+    _compassMode = _prefs!.getInt('compassMode') ?? 0;
+    
     notifyListeners();
   }
 
@@ -50,6 +57,9 @@ class AppSettings extends ChangeNotifier {
   int get jitterPoints => _jitterPoints;
   bool get keepScreenOn => _keepScreenOn;
   bool get darkTheme => _darkTheme;
+  
+  bool get showGrid => _showGrid;
+  int get compassMode => _compassMode;
 
   // --- Сеттеры с сохранением на диск ---
   void setTrackTimeMs(int value) {
@@ -88,7 +98,7 @@ class AppSettings extends ChangeNotifier {
     if (_keepScreenOn != value) {
       _keepScreenOn = value;
       _prefs?.setBool('keepScreenOn', value);
-      notifyListeners(); // ИЗМЕНЕНИЕ 1.32.8: Прямой вызов Wakelock убран отсюда
+      notifyListeners(); 
     }
   }
 
@@ -96,6 +106,22 @@ class AppSettings extends ChangeNotifier {
     if (_darkTheme != value) {
       _darkTheme = value;
       _prefs?.setBool('darkTheme', value);
+      notifyListeners();
+    }
+  }
+
+  void setShowGrid(bool value) {
+    if (_showGrid != value) {
+      _showGrid = value;
+      _prefs?.setBool('showGrid', value);
+      notifyListeners();
+    }
+  }
+
+  void setCompassMode(int value) {
+    if (_compassMode != value) {
+      _compassMode = value;
+      _prefs?.setInt('compassMode', value);
       notifyListeners();
     }
   }

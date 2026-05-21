@@ -1,14 +1,15 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.32.8
- * Изменения: ЭТАП Настроек, Шаг 8. Внедрено локальное управление WakelockPlus внутри initState и dispose для защиты от разряда батареи.
+ * Версия: 1.33.1
+ * Изменения: UC-23, Шаг 1. Добавлен компонент MapScaleBar для динамического отображения масштабной линейки в левом нижнем углу карты.
  * Описание: Экран визуализации узлов на интерактивной карте.
  */
 
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:wakelock_plus/wakelock_plus.dart'; // ИЗМЕНЕНИЕ 1.32.8: Импорт пакета перенесен сюда
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'ble_service.dart';
 import 'node_database.dart';
 import 'roster_screen.dart'; 
@@ -70,6 +71,88 @@ class MarkerStyleManager {
 }
 
 // ============================================================================
+// Компонент: Масштабная линейка (Scale Bar)
+// ============================================================================
+class MapScaleBar extends StatelessWidget {
+  const MapScaleBar({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    // Получаем текущее состояние камеры карты
+    final camera = MapCamera.of(context);
+    final lat = camera.center.latitude;
+    final zoom = camera.zoom;
+
+    // Расчет метров в одном пикселе для текущей широты и зума (EPSG:3857)
+    final metersPerPixel = (math.cos(lat * math.pi / 180) * 2 * math.pi * 6378137) / (256 * math.pow(2, zoom));
+    
+    // Предустановленные красивые шаги линейки в метрах
+    final List<double> scaleSteps = [
+      1, 2, 5, 10, 20, 50, 100, 200, 500, 
+      1000, 2000, 5000, 10000, 20000, 50000, 
+      100000, 200000, 500000, 1000000, 2000000, 5000000
+    ];
+    
+    // Целевая ширина линейки около 100 пикселей
+    const double targetPixels = 100.0;
+    final double distanceMeters = targetPixels * metersPerPixel;
+    
+    // Ищем наиболее подходящий шаг
+    double selectedScale = scaleSteps.first;
+    for (var step in scaleSteps) {
+      if (distanceMeters >= step) {
+        selectedScale = step;
+      } else {
+        break;
+      }
+    }
+    
+    // Вычисляем фактическую ширину плашки в пикселях
+    final double scaleWidth = selectedScale / metersPerPixel;
+    
+    // Формируем подпись
+    final String label = selectedScale >= 1000 
+        ? '${(selectedScale / 1000).toStringAsFixed(0)} км' 
+        : '${selectedScale.toStringAsFixed(0)} м';
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 16.0, bottom: 24.0),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.8),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Container(
+            width: scaleWidth,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.black87,
+              border: Border.all(color: Colors.white, width: 1),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================================
 // Экран Карты
 // ============================================================================
 class MapScreen extends StatefulWidget {
@@ -83,7 +166,6 @@ class _MapScreenState extends State<MapScreen> {
   final BleService _bleService = BleService();
   final MapController _mapController = MapController();
 
-  // ИЗМЕНЕНИЕ 1.32.8: Включаем Wakelock только при открытии экрана карты
   @override
   void initState() {
     super.initState();
@@ -93,7 +175,6 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  // ИЗМЕНЕНИЕ 1.32.8: Гарантированно выключаем Wakelock при покидании карты
   @override
   void dispose() {
     WakelockPlus.disable();
@@ -238,6 +319,11 @@ class _MapScreenState extends State<MapScreen> {
                     ),
                   );
                 }).toList(),
+              ),
+              // Масштабная линейка в левом нижнем углу
+              const Align(
+                alignment: Alignment.bottomLeft,
+                child: MapScaleBar(),
               ),
             ],
           );
