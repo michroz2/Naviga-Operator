@@ -1,7 +1,7 @@
 /*
  * Файл: main_menu_screen.dart
- * Версия: 1.26
- * Изменения: ЭТАП 4, Шаг 2. Выделено главное меню. Внедрена защита (PopScope и Listener) для корректной отработки потери соединения.
+ * Версия: 1.32.0
+ * Изменения: ЭТАП Настроек, Шаг 1. Добавлена кнопка перехода в "Настройки приложения" в конец списка.
  * Описание: Главный дашборд управления Донглом.
  */
 
@@ -13,6 +13,7 @@ import 'ble_protocol.dart';
 import 'ble_service.dart';
 import 'roster_screen.dart';
 import 'map_screen.dart';
+import 'settings_screen.dart'; // ИЗМЕНЕНИЕ 1.32.0: Импорт нового экрана
 
 class MainMenuScreen extends StatefulWidget {
   const MainMenuScreen({super.key});
@@ -347,6 +348,39 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                   );
                 },
               ),
+              const SizedBox(height: 10),
+
+              // ИЗМЕНЕНИЕ 1.32.0: БЛОК НАСТРОЕК ПРИЛОЖЕНИЯ
+              Card(
+                elevation: 4,
+                color: Colors.white,
+                child: InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: const Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Row(
+                      children: [
+                        Icon(Icons.settings, color: Colors.blueGrey, size: 32),
+                        SizedBox(width: 16),
+                        Expanded(
+                          child: Text(
+                            'Настройки приложения', 
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)
+                          ),
+                        ),
+                        Icon(Icons.chevron_right, color: Colors.grey),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
             ],
           ),
         ),
