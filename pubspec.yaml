@@ -1,6 +1,6 @@
 # Файл: pubspec.yaml
-# Версия: 1.18
-# Изменения: Разрешение конфликта зависимостей. Даунгрейд latlong2 до ^0.9.1 для совместимости с flutter_map ^6.1.0.
+# Версия: 1.19
+# Изменения: ЭТАП Настроек, Шаг 4 (v1.32.3). Добавлен пакет shared_preferences для сохранения настроек на диск.
 # Описание: Конфигурация пакетов, ресурсов и зависимостей проекта.
 
 name: naviga_operator
@@ -47,6 +47,7 @@ dependencies:
   geolocator: ^14.0.2
   flutter_background_service: ^5.0.5
   flutter_local_notifications: ^17.1.2
+  shared_preferences: ^2.2.2 # ИЗМЕНЕНИЕ 1.32.3: Пакет для локального сохранения настроек
 
 dev_dependencies:
   flutter_test:

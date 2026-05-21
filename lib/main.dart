@@ -1,7 +1,7 @@
 /*
  * Файл: main.dart
- * Версия: 1.29
- * Изменения: ЭТАП 4, Шаг 15 (Путь А). Добавлена инициализация приоритетной фоновой службы (BackgroundManager) перед запуском корневого виджета. Исправлена опечатка WidgetsFlutterBinding.
+ * Версия: 1.32.3
+ * Изменения: ЭТАП Настроек, Шаг 4. Добавлена асинхронная загрузка локальных настроек из SharedPreferences перед запуском UI.
  * Описание: Главная точка входа в приложение с поддержкой фонового режима.
  */
 
@@ -10,6 +10,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'app_config.dart';
 import 'scanner_screen.dart';
 import 'background_manager.dart';
+import 'app_settings.dart'; // ИЗМЕНЕНИЕ 1.32.3: Импортируем менеджер настроек
 
 void main() async {
   // Гарантируем инициализацию фреймворка перед обращением к нативным плагинам
@@ -17,6 +18,9 @@ void main() async {
 
   // Инициализируем конфигурацию фонового сервиса
   await BackgroundManager.initializeService();
+
+  // ИЗМЕНЕНИЕ 1.32.3: Загружаем сохраненные настройки с диска смартфона
+  await AppSettings().init();
 
   // Настройка логгера Bluetooth
   FlutterBluePlus.setLogLevel(LogLevel.error, color: false);
