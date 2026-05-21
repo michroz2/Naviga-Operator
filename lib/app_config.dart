@@ -6,5 +6,5 @@
  */
 
 class AppConfig {
-  static const String version = '1.32.7';
+  static const String version = '1.32.8';
 }

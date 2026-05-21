@@ -1,13 +1,12 @@
 /*
  * Файл: app_settings.dart
- * Версия: 1.32.7
- * Изменения: ЭТАП Настроек, Шаг 7. Подключен wakelock_plus. Логика управления системным экраном привязана к сеттеру keepScreenOn.
+ * Версия: 1.32.8
+ * Изменения: ЭТАП Настроек, Шаг 8. Логика Wakelock удалена из глобального класса настроек и перенесена в слой UI карты.
  * Описание: Менеджер локальных настроек приложения.
  */
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:wakelock_plus/wakelock_plus.dart'; // ИЗМЕНЕНИЕ 1.32.7: Импорт пакета
 
 class AppSettings extends ChangeNotifier {
   static final AppSettings _instance = AppSettings._internal();
@@ -41,13 +40,6 @@ class AppSettings extends ChangeNotifier {
     _keepScreenOn = _prefs!.getBool('keepScreenOn') ?? false;
     _darkTheme = _prefs!.getBool('darkTheme') ?? false;
     
-    // ИЗМЕНЕНИЕ 1.32.7: Применяем Wakelock при загрузке, если он был включен
-    if (_keepScreenOn) {
-      WakelockPlus.enable();
-    } else {
-      WakelockPlus.disable();
-    }
-
     notifyListeners();
   }
 
@@ -96,15 +88,7 @@ class AppSettings extends ChangeNotifier {
     if (_keepScreenOn != value) {
       _keepScreenOn = value;
       _prefs?.setBool('keepScreenOn', value);
-      
-      // ИЗМЕНЕНИЕ 1.32.7: Динамическое включение/выключение удержания экрана
-      if (value) {
-        WakelockPlus.enable();
-      } else {
-        WakelockPlus.disable();
-      }
-      
-      notifyListeners();
+      notifyListeners(); // ИЗМЕНЕНИЕ 1.32.8: Прямой вызов Wakelock убран отсюда
     }
   }
 

@@ -1,17 +1,18 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.32.5
- * Изменения: ЭТАП Настроек, Шаг 5. Карта подписана на AppSettings. Толщина и длина трека теперь динамически берутся из настроек.
+ * Версия: 1.32.8
+ * Изменения: ЭТАП Настроек, Шаг 8. Внедрено локальное управление WakelockPlus внутри initState и dispose для защиты от разряда батареи.
  * Описание: Экран визуализации узлов на интерактивной карте.
  */
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:wakelock_plus/wakelock_plus.dart'; // ИЗМЕНЕНИЕ 1.32.8: Импорт пакета перенесен сюда
 import 'ble_service.dart';
 import 'node_database.dart';
 import 'roster_screen.dart'; 
-import 'app_settings.dart'; // ИЗМЕНЕНИЕ 1.32.5: Подключили настройки
+import 'app_settings.dart'; 
 
 // ============================================================================
 // Вспомогательный класс: Управление стилями маркеров
@@ -82,6 +83,25 @@ class _MapScreenState extends State<MapScreen> {
   final BleService _bleService = BleService();
   final MapController _mapController = MapController();
 
+  // ИЗМЕНЕНИЕ 1.32.8: Включаем Wakelock только при открытии экрана карты
+  @override
+  void initState() {
+    super.initState();
+    if (AppSettings().keepScreenOn) {
+      WakelockPlus.enable();
+      debugPrint('Wakelock: Экран заблокирован от засыпания (только на Карте)');
+    }
+  }
+
+  // ИЗМЕНЕНИЕ 1.32.8: Гарантированно выключаем Wakelock при покидании карты
+  @override
+  void dispose() {
+    WakelockPlus.disable();
+    debugPrint('Wakelock: Ограничение сна экрана снято при выходе из Карты');
+    _mapController.dispose();
+    super.dispose();
+  }
+
   String _getRoleName(int roleCode) {
     switch (roleCode) {
       case 0: return 'Ретранслятор';
@@ -103,7 +123,7 @@ class _MapScreenState extends State<MapScreen> {
           _bleService.nodeDatabase,
           _bleService.identityNotifier,
           _bleService.sysConfigNotifier,
-          AppSettings(), // ИЗМЕНЕНИЕ 1.32.5: Подписываем Карту на глобальные настройки
+          AppSettings(), 
         ]),
         builder: (context, child) {
           final nodes = _bleService.nodeDatabase.nodes.values
@@ -137,12 +157,11 @@ class _MapScreenState extends State<MapScreen> {
                   final isOnline = isMe ? true : (now - node.lastSeenTimeMs) <= timeoutMs;
                   final style = MarkerStyleManager.getStyle(role: node.role, isMe: isMe, isOnline: isOnline);
                   
-                  // ИЗМЕНЕНИЕ 1.32.5: Запрашиваем трек с учетом настройки времени (0 = без ограничений)
                   final track = node.getRecentTrack(AppSettings().trackTimeMs);
 
                   return Polyline(
                     points: track,
-                    strokeWidth: AppSettings().trackWidth, // ИЗМЕНЕНИЕ 1.32.5: Берем толщину линии из настроек
+                    strokeWidth: AppSettings().trackWidth, 
                     color: style.color.withOpacity(isOnline ? 0.6 : 0.3),
                   );
                 }).where((p) => p.points.length > 1).toList(), 
