@@ -1,6 +1,6 @@
 # Файл: pubspec.yaml
-# Версия: 1.19
-# Изменения: ЭТАП Настроек, Шаг 4 (v1.32.3). Добавлен пакет shared_preferences для сохранения настроек на диск.
+# Версия: 1.20
+# Изменения: ЭТАП Настроек, Шаг 7 (v1.32.7). Добавлен wakelock_plus для предотвращения засыпания экрана.
 # Описание: Конфигурация пакетов, ресурсов и зависимостей проекта.
 
 name: naviga_operator
@@ -47,7 +47,8 @@ dependencies:
   geolocator: ^14.0.2
   flutter_background_service: ^5.0.5
   flutter_local_notifications: ^17.1.2
-  shared_preferences: ^2.2.2 # ИЗМЕНЕНИЕ 1.32.3: Пакет для локального сохранения настроек
+  shared_preferences: ^2.2.2 
+  wakelock_plus: ^1.2.8 # ИЗМЕНЕНИЕ 1.32.7: Пакет для удержания экрана
 
 dev_dependencies:
   flutter_test:

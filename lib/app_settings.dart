@@ -1,12 +1,13 @@
 /*
  * Файл: app_settings.dart
- * Версия: 1.32.4
- * Изменения: Хотфикс (1.32.4) - исправлено несовпадение ключа 'jitterRadius' при сохранении в SharedPreferences.
+ * Версия: 1.32.7
+ * Изменения: ЭТАП Настроек, Шаг 7. Подключен wakelock_plus. Логика управления системным экраном привязана к сеттеру keepScreenOn.
  * Описание: Менеджер локальных настроек приложения.
  */
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wakelock_plus/wakelock_plus.dart'; // ИЗМЕНЕНИЕ 1.32.7: Импорт пакета
 
 class AppSettings extends ChangeNotifier {
   static final AppSettings _instance = AppSettings._internal();
@@ -40,6 +41,13 @@ class AppSettings extends ChangeNotifier {
     _keepScreenOn = _prefs!.getBool('keepScreenOn') ?? false;
     _darkTheme = _prefs!.getBool('darkTheme') ?? false;
     
+    // ИЗМЕНЕНИЕ 1.32.7: Применяем Wakelock при загрузке, если он был включен
+    if (_keepScreenOn) {
+      WakelockPlus.enable();
+    } else {
+      WakelockPlus.disable();
+    }
+
     notifyListeners();
   }
 
@@ -71,7 +79,6 @@ class AppSettings extends ChangeNotifier {
   void setJitterRadius(double value) {
     if (_jitterRadius != value) {
       _jitterRadius = value;
-      // ИЗМЕНЕНИЕ 1.32.4: Исправлено имя ключа с 'trackRadius' на 'jitterRadius'
       _prefs?.setDouble('jitterRadius', value); 
       notifyListeners();
     }
@@ -89,6 +96,14 @@ class AppSettings extends ChangeNotifier {
     if (_keepScreenOn != value) {
       _keepScreenOn = value;
       _prefs?.setBool('keepScreenOn', value);
+      
+      // ИЗМЕНЕНИЕ 1.32.7: Динамическое включение/выключение удержания экрана
+      if (value) {
+        WakelockPlus.enable();
+      } else {
+        WakelockPlus.disable();
+      }
+      
       notifyListeners();
     }
   }
