@@ -1,7 +1,7 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.28
- * Изменения: ЭТАП 4, Шаг 12 (UC-21). Добавлен PolylineLayer для визуализации «хвостов» перемещения узлов. Хвосты отрисовываются под маркерами с учетом ограничения по времени (30 минут).
+ * Версия: 1.32.5
+ * Изменения: ЭТАП Настроек, Шаг 5. Карта подписана на AppSettings. Толщина и длина трека теперь динамически берутся из настроек.
  * Описание: Экран визуализации узлов на интерактивной карте.
  */
 
@@ -11,6 +11,7 @@ import 'package:latlong2/latlong.dart';
 import 'ble_service.dart';
 import 'node_database.dart';
 import 'roster_screen.dart'; 
+import 'app_settings.dart'; // ИЗМЕНЕНИЕ 1.32.5: Подключили настройки
 
 // ============================================================================
 // Вспомогательный класс: Управление стилями маркеров
@@ -102,6 +103,7 @@ class _MapScreenState extends State<MapScreen> {
           _bleService.nodeDatabase,
           _bleService.identityNotifier,
           _bleService.sysConfigNotifier,
+          AppSettings(), // ИЗМЕНЕНИЕ 1.32.5: Подписываем Карту на глобальные настройки
         ]),
         builder: (context, child) {
           final nodes = _bleService.nodeDatabase.nodes.values
@@ -129,22 +131,21 @@ class _MapScreenState extends State<MapScreen> {
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.michroz2.naviga_operator',
               ),
-              // ИЗМЕНЕНИЕ 1.28: Слой полилиний (хвостов) отрисовывается ПОД маркерами
               PolylineLayer(
                 polylines: nodes.map((node) {
                   final isMe = node.nodeId == myId;
                   final isOnline = isMe ? true : (now - node.lastSeenTimeMs) <= timeoutMs;
                   final style = MarkerStyleManager.getStyle(role: node.role, isMe: isMe, isOnline: isOnline);
                   
-                  // Запрашиваем актуальный трек (30 минут = 1 800 000 мс)
-                  final track = node.getRecentTrack(1800000);
+                  // ИЗМЕНЕНИЕ 1.32.5: Запрашиваем трек с учетом настройки времени (0 = без ограничений)
+                  final track = node.getRecentTrack(AppSettings().trackTimeMs);
 
                   return Polyline(
                     points: track,
-                    strokeWidth: 4.0,
+                    strokeWidth: AppSettings().trackWidth, // ИЗМЕНЕНИЕ 1.32.5: Берем толщину линии из настроек
                     color: style.color.withOpacity(isOnline ? 0.6 : 0.3),
                   );
-                }).where((p) => p.points.length > 1).toList(), // Выводим только если есть минимум 2 точки
+                }).where((p) => p.points.length > 1).toList(), 
               ),
               MarkerLayer(
                 markers: nodes.map((node) {

@@ -1,7 +1,7 @@
 /*
  * Файл: node_database.dart
- * Версия: 1.31.1
- * Изменения: Хотфикс отрисовки трека. В getRecentTrack всегда добавляется текущая позиция узла, чтобы исключить визуальный разрыв между "хвостом" и маркером.
+ * Версия: 1.32.5
+ * Изменения: ЭТАП Настроек, Шаг 5. В метод getRecentTrack добавлена логика обработки maxAgeMs == 0 (Не ограничено).
  * Описание: Центральная база данных Roster с поддержкой трекинга.
  */
 
@@ -107,11 +107,12 @@ class NodeRecord {
     final now = DateTime.now().millisecondsSinceEpoch;
     
     List<LatLng> recent = track
-        .where((p) => p.timestampMs != 0 && (now - p.timestampMs) <= maxAgeMs)
+        // ИЗМЕНЕНИЕ 1.32.5: Добавлено (maxAgeMs == 0) для поддержки опции "Не ограничено"
+        .where((p) => p.timestampMs != 0 && (maxAgeMs == 0 || (now - p.timestampMs) <= maxAgeMs))
         .map((p) => LatLng(p.lat, p.lon))
         .toList();
 
-    // ИЗМЕНЕНИЕ 1.31.1: Принудительно добавляем текущую позицию узла в конец трека
+    // Принудительно добавляем текущую позицию узла в конец трека
     if (hasValidGps) {
       recent.add(LatLng(lat, lon));
     }
