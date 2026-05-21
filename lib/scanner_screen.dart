@@ -1,7 +1,7 @@
 /*
  * Файл: scanner_screen.dart
- * Версия: 1.26
- * Изменения: ЭТАП 4, Шаг 2. Выделен экран поиска и подключения. Навигация на главное меню при успешном коннекте.
+ * Версия: 1.32.9
+ * Изменения: ЭТАП Настроек, Шаг 9 (Финал). UI-рефакторинг для поддержки Тёмной темы. Жесткий цвет кнопки поиска заменен на динамический Theme.of(context).colorScheme.
  * Описание: Экран сканирования BLE устройств.
  */
 
@@ -24,10 +24,12 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme; // Получаем текущую цветовую схему
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Naviga v${AppConfig.version} Подключение'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        backgroundColor: colorScheme.inversePrimary,
         actions: [
           IconButton(
             icon: const Icon(Icons.exit_to_app),
@@ -53,7 +55,9 @@ class _ScannerScreenState extends State<ScannerScreen> {
                   label: Text(isScanning ? 'Идет поиск...' : 'Поиск Донглов'),
                   style: ElevatedButton.styleFrom(
                     minimumSize: const Size.fromHeight(50),
-                    backgroundColor: Colors.blue.shade100,
+                    // ИЗМЕНЕНИЕ 1.32.9: Динамические контрастные цвета вместо жесткого Colors.blue.shade100
+                    backgroundColor: colorScheme.primaryContainer,
+                    foregroundColor: colorScheme.onPrimaryContainer,
                   ),
                 );
               },
@@ -75,7 +79,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                     return Card(
                       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                       child: ListTile(
-                        leading: const Icon(Icons.bluetooth, color: Colors.blue),
+                        leading: Icon(Icons.bluetooth, color: colorScheme.primary),
                         title: Text(deviceName, style: const TextStyle(fontWeight: FontWeight.bold)),
                         subtitle: Text('MAC: ${r.device.remoteId}\nМощность сигнала (RSSI): ${r.rssi} dBm'),
                         trailing: ElevatedButton(

@@ -1,7 +1,7 @@
 /*
  * Файл: main_menu_screen.dart
- * Версия: 1.32.0
- * Изменения: ЭТАП Настроек, Шаг 1. Добавлена кнопка перехода в "Настройки приложения" в конец списка.
+ * Версия: 1.32.10
+ * Изменения: Хотфикс UI. Фон карточки "Карта" в активном состоянии сброшен на системный (null) для полного визуального единства с остальными пунктами меню.
  * Описание: Главный дашборд управления Донглом.
  */
 
@@ -13,7 +13,7 @@ import 'ble_protocol.dart';
 import 'ble_service.dart';
 import 'roster_screen.dart';
 import 'map_screen.dart';
-import 'settings_screen.dart'; // ИЗМЕНЕНИЕ 1.32.0: Импорт нового экрана
+import 'settings_screen.dart';
 
 class MainMenuScreen extends StatefulWidget {
   const MainMenuScreen({super.key});
@@ -28,7 +28,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   @override
   void initState() {
     super.initState();
-    // Подписываемся на разрыв связи (например, если Донгл выключился)
     _bleService.isConnected.addListener(_connectionListener);
   }
 
@@ -39,7 +38,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   }
 
   void _connectionListener() {
-    // Если связь оборвалась, автоматически закрываем меню и возвращаемся в сканер
     if (!_bleService.isConnected.value && mounted) {
       Navigator.of(context).popUntil((route) => route.isFirst);
     }
@@ -56,36 +54,38 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // PopScope защищает от системного жеста "Назад", гарантируя отключение BLE
+    final colorScheme = Theme.of(context).colorScheme;
+
     return PopScope(
       canPop: false,
       onPopInvoked: (didPop) async {
         if (didPop) return;
         await _bleService.disconnect(); 
-        // При вызове disconnect изменится isConnected, и сработает _connectionListener
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Naviga v${AppConfig.version} Меню'),
-          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+          title: const Text('Naviga Меню'),
+          backgroundColor: colorScheme.inversePrimary,
         ),
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // КНОПКА ОТКЛЮЧЕНИЯ
               ElevatedButton.icon(
                 onPressed: () => _bleService.disconnect(),
                 icon: const Icon(Icons.bluetooth_disabled),
                 label: Text('Отключить ${_bleService.connectedDeviceName.value}'),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 15),
-                  backgroundColor: Colors.red.shade100,
+                  backgroundColor: colorScheme.errorContainer,
+                  foregroundColor: colorScheme.onErrorContainer,
                 ),
               ),
               const SizedBox(height: 20),
 
-              // --- БЛОК ТОПОЛОГИИ СЕТИ (Список) ---
+              // --- БЛОК ТОПОЛОГИИ СЕТИ ---
               ListenableBuilder(
                 listenable: Listenable.merge([_bleService.nodeDatabase, _bleService.identityNotifier]),
                 builder: (context, child) {
@@ -127,7 +127,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               ),
               const SizedBox(height: 10),
 
-              // --- БЛОК КАРТЫ С УМНОЙ БЛОКИРОВКОЙ ---
+              // --- БЛОК КАРТЫ ---
               ListenableBuilder(
                 listenable: _bleService.nodeDatabase,
                 builder: (context, child) {
@@ -135,7 +135,8 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
 
                   return Card(
                     elevation: hasValidGps ? 4 : 1,
-                    color: hasValidGps ? Colors.blueGrey.shade50 : Colors.grey.shade200,
+                    // ИЗМЕНЕНИЕ 1.32.10: Сброс цвета на системный (null) для активного состояния
+                    color: hasValidGps ? null : colorScheme.surfaceVariant,
                     child: InkWell(
                       onTap: hasValidGps ? () {
                         Navigator.push(
@@ -148,22 +149,23 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                         padding: const EdgeInsets.all(16.0),
                         child: Row(
                           children: [
-                            Icon(Icons.map, color: hasValidGps ? Colors.deepOrange : Colors.grey, size: 32),
+                            Icon(Icons.map, color: hasValidGps ? colorScheme.primary : Colors.grey, size: 32),
                             const SizedBox(width: 16),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(hasValidGps ? 'Карта (Naviga Map)' : 'Карта недоступна', 
+                                  Text(hasValidGps ? 'Карта' : 'Карта недоступна', 
                                     style: TextStyle(
                                       fontSize: 18, 
                                       fontWeight: FontWeight.bold,
-                                      color: hasValidGps ? Colors.black87 : Colors.grey.shade600
+                                      // ИЗМЕНЕНИЕ 1.32.10: Сброс цвета текста на дефолтный (null)
+                                      color: hasValidGps ? null : colorScheme.onSurfaceVariant
                                     )),
                                   Text(hasValidGps ? 'Визуализация узлов' : 'Ожидание геоданных из сети...', 
                                     style: TextStyle(
                                       fontSize: 16,
-                                      color: hasValidGps ? Colors.black87 : Colors.grey.shade600
+                                      color: hasValidGps ? null : colorScheme.onSurfaceVariant
                                     )),
                                 ],
                               ),
@@ -214,7 +216,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                       break;
                     default:
                       gpsText = 'Неизвестный статус (${status.gpsState})';
-                      gpsColor = Colors.red;
+                      gpsColor = colorScheme.error;
                   }
 
                   return Card(
@@ -252,9 +254,8 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                               label: const Text('ПЕРЕДАТЬ КООРДИНАТЫ СМАРТФОНА (ANCHOR)'),
                               style: ElevatedButton.styleFrom(
                                 minimumSize: const Size.fromHeight(45),
-                                backgroundColor: Colors.deepOrange.shade50,
-                                foregroundColor: Colors.deepOrange.shade800,
-                                side: BorderSide(color: Colors.deepOrange.shade200),
+                                backgroundColor: colorScheme.tertiaryContainer,
+                                foregroundColor: colorScheme.onTertiaryContainer,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                               ),
                             ),
@@ -284,7 +285,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                             children: [
                               const Text('Идентификация Узла', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                               IconButton(
-                                icon: const Icon(Icons.edit, color: Colors.blue),
+                                icon: Icon(Icons.edit, color: colorScheme.primary),
                                 onPressed: () {
                                   Navigator.push(
                                     context,
@@ -325,7 +326,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                             children: [
                               const Text('Системные Таймеры', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                               IconButton(
-                                icon: const Icon(Icons.edit, color: Colors.blue),
+                                icon: Icon(Icons.edit, color: colorScheme.primary),
                                 onPressed: () {
                                   Navigator.push(
                                     context,
@@ -350,10 +351,9 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               ),
               const SizedBox(height: 10),
 
-              // ИЗМЕНЕНИЕ 1.32.0: БЛОК НАСТРОЕК ПРИЛОЖЕНИЯ
+              // --- БЛОК НАСТРОЕК ПРИЛОЖЕНИЯ ---
               Card(
                 elevation: 4,
-                color: Colors.white,
                 child: InkWell(
                   onTap: () {
                     Navigator.push(
@@ -371,7 +371,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                         Expanded(
                           child: Text(
                             'Настройки приложения', 
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)
                           ),
                         ),
                         Icon(Icons.chevron_right, color: Colors.grey),
@@ -434,7 +434,7 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
       context: context,
       builder: (BuildContext ctx) {
         return AlertDialog(
-          title: const Text('Внимание!', style: TextStyle(color: Colors.red)),
+          title: Text('Внимание!', style: TextStyle(color: Theme.of(context).colorScheme.error)),
           content: const Text(
             'Вы уверены? Это действие безвозвратно удалит все данные на Донгле, сбросит его Имя и Роль, а также разорвет текущее соединение.'
           ),
@@ -449,7 +449,7 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
                 _bleService.factoryReset();
                 Navigator.of(context).pop();
               },
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
               child: const Text('СБРОСИТЬ'),
             ),
           ],
@@ -460,6 +460,8 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Редактирование узла')),
       body: Padding(
@@ -501,8 +503,8 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
               },
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 15),
-                backgroundColor: Colors.blueAccent, 
-                foregroundColor: Colors.white
+                backgroundColor: colorScheme.primary, 
+                foregroundColor: colorScheme.onPrimary
               ),
               child: const Text('СОХРАНИТЬ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ),
@@ -515,8 +517,8 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
               label: const Text('СБРОС К ЗАВОДСКИМ НАСТРОЙКАМ'),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 15),
-                backgroundColor: Colors.red.shade600,
-                foregroundColor: Colors.white,
+                backgroundColor: colorScheme.error,
+                foregroundColor: colorScheme.onError,
               ),
             ),
             const SizedBox(height: 10),
@@ -584,8 +586,8 @@ class _EditSysConfigScreenState extends State<EditSysConfigScreen> {
               },
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size.fromHeight(50), 
-                backgroundColor: Colors.blueAccent, 
-                foregroundColor: Colors.white,
+                backgroundColor: Theme.of(context).colorScheme.primary, 
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
               ),
               child: const Text('СОХРАНИТЬ ТАЙМЕРЫ'),
             ),
