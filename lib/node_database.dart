@@ -1,7 +1,7 @@
 /*
  * Файл: node_database.dart
- * Версия: 1.32.5
- * Изменения: ЭТАП Настроек, Шаг 5. В метод getRecentTrack добавлена логика обработки maxAgeMs == 0 (Не ограничено).
+ * Версия: 1.32.6
+ * Изменения: ЭТАП Настроек, Шаг 6. Интеграция Фильтра блуждания с AppSettings. Статические константы заменены на динамические параметры из настроек.
  * Описание: Центральная база данных Roster с поддержкой трекинга.
  */
 
@@ -9,6 +9,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 import 'ble_protocol.dart';
+import 'app_settings.dart'; // ИЗМЕНЕНИЕ 1.32.6: Подключили настройки
 
 // ============================================================================
 // Структура точки для хвоста истории (Track)
@@ -37,11 +38,9 @@ class NodeRecord {
   double distance;  
   double azimuth;
 
-  // Кольцевой буфер истории координат и настройки анти-джиттера
+  // Кольцевой буфер истории координат
   List<TrackPoint> track = [];
   static const int maxTrackPoints = 50;
-  static const double trackJitterMeters = 10.0;
-  static const int trackJitterPointsToCheck = 3; 
 
   bool get hasValidGps => lat != 0.0 && lon != 0.0;
 
@@ -57,7 +56,7 @@ class NodeRecord {
     this.azimuth = 0.0,
   });
 
-  // Метод добавления точки в трек с фильтром по 3 последним точкам
+  // Метод добавления точки в трек с динамическим фильтром блуждания
   void _addPointToTrack(double newLat, double newLon, int timestamp) {
     if (newLat == 0.0 || newLon == 0.0) return;
 
@@ -74,7 +73,10 @@ class NodeRecord {
 
     // 2. Анти-джиттер: проверка дистанции до N последних добавленных точек
     bool isJitter = false;
-    int pointsToCheck = trackJitterPointsToCheck;
+    
+    // ИЗМЕНЕНИЕ 1.32.6: Получаем актуальные настройки фильтра "на лету"
+    int pointsToCheck = AppSettings().jitterPoints;
+    double currentJitterRadius = AppSettings().jitterRadius;
     
     // Защита: проверяем не больше точек, чем есть в буфере
     if (track.length < pointsToCheck) {
@@ -88,13 +90,13 @@ class NodeRecord {
       final dist = Distance().as(LengthUnit.Meter, pLatLng, newPoint).toDouble();
       
       // Если хотя бы одна из проверяемых точек ближе порога - считаем это джиттером/стоянкой
-      if (dist < trackJitterMeters) {
+      if (dist < currentJitterRadius) {
         isJitter = true;
         break; 
       }
     }
 
-    // Если новая точка дальше порога от ВСЕХ 3 последних точек - сдвигаем буфер
+    // Если новая точка дальше порога от ВСЕХ проверяемых последних точек - сдвигаем буфер
     if (!isJitter) {
       track.removeAt(0); // Удаляем самую старую в начале
       track.add(TrackPoint(lat: newLat, lon: newLon, timestampMs: timestamp)); // Добавляем новую в конец
@@ -107,7 +109,6 @@ class NodeRecord {
     final now = DateTime.now().millisecondsSinceEpoch;
     
     List<LatLng> recent = track
-        // ИЗМЕНЕНИЕ 1.32.5: Добавлено (maxAgeMs == 0) для поддержки опции "Не ограничено"
         .where((p) => p.timestampMs != 0 && (maxAgeMs == 0 || (now - p.timestampMs) <= maxAgeMs))
         .map((p) => LatLng(p.lat, p.lon))
         .toList();
