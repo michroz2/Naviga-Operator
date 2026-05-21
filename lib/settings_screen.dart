@@ -1,11 +1,12 @@
 /*
  * Файл: settings_screen.dart
- * Версия: 1.32.0
- * Изменения: ЭТАП Настроек, Шаг 1. Создан визуальный каркас экрана настроек приложения.
+ * Версия: 1.32.2
+ * Изменения: ЭТАП Настроек, Шаг 3. Реализован буфер редактирования. Добавлены кнопки "Отменить изменения" и "По умолчанию" с диалогом подтверждения.
  * Описание: Экран управления локальными настройками приложения.
  */
 
 import 'package:flutter/material.dart';
+import 'app_settings.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -15,13 +16,18 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  // Временные локальные переменные для визуального тестирования (Шаг 1)
-  int _trackTimeMs = 1800000; // 30 минут по умолчанию
-  double _trackWidth = 4.0;
-  double _jitterRadius = 10.0;
-  int _jitterPoints = 3;
-  bool _keepScreenOn = false;
-  bool _darkTheme = false;
+  final AppSettings _settings = AppSettings();
+
+  // Локальный буфер текущей сессии редактирования
+  late int _trackTimeMs;
+  late double _trackWidth;
+  late double _jitterRadius;
+  late int _jitterPoints;
+  late bool _keepScreenOn;
+  late bool _darkTheme;
+
+  // Флаг, указывающий, что пользователь явно отменил изменения
+  bool _isCancelled = false;
 
   final Map<int, String> _trackTimeOptions = {
     300000: '5 минут',
@@ -33,70 +39,184 @@ class _SettingsScreenState extends State<SettingsScreen> {
   };
 
   @override
+  void initState() {
+    super.initState();
+    // Кэшируем глобальные настройки в локальный буфер при инициализации экрана
+    _trackTimeMs = _settings.trackTimeMs;
+    _trackWidth = _settings.trackWidth;
+    _jitterRadius = _settings.jitterRadius;
+    _jitterPoints = _settings.jitterPoints;
+    _keepScreenOn = _settings.keepScreenOn;
+    _darkTheme = _settings.darkTheme;
+  }
+
+  // Метод сохранения локального буфера в глобальные настройки
+  void _saveAllSettings() {
+    _settings.setTrackTimeMs(_trackTimeMs);
+    _settings.setTrackWidth(_trackWidth);
+    _settings.setJitterRadius(_jitterRadius);
+    _settings.setJitterPoints(_jitterPoints);
+    _settings.setKeepScreenOn(_keepScreenOn);
+    _settings.setDarkTheme(_darkTheme);
+  }
+
+  // Диалог подтверждения сброса настроек по умолчанию
+  void _showResetConfirmation(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext ctx) {
+        return AlertDialog(
+          title: const Text('Сброс настроек'),
+          content: const Text('Вы уверены, что хотите восстановить все настройки приложения по умолчанию?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('ОТМЕНА'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                setState(() {
+                  // Выставляем первоначальные жесткие дефолты в буфер
+                  _trackTimeMs = 1800000;
+                  _trackWidth = 4.0;
+                  _jitterRadius = 10.0;
+                  _jitterPoints = 3;
+                  _keepScreenOn = false;
+                  _darkTheme = false;
+                });
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.orange.shade900),
+              child: const Text('СБРОСИТЬ'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Настройки приложения'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 16.0),
-        children: [
-          _buildSectionHeader(Icons.map, 'Визуализация на карте'),
-          _buildDropdownRow(
-            'Время отображения трека',
-            _trackTimeMs,
-            _trackTimeOptions,
-            (val) => setState(() => _trackTimeMs = val as int),
-          ),
-          _buildSliderRow(
-            'Толщина линии трека',
-            _trackWidth,
-            1.0,
-            10.0,
-            9,
-            (val) => setState(() => _trackWidth = val),
-          ),
-          const Divider(height: 32),
+    // PopScope перехватывает выход с экрана (нажатие "Назад" в AppBar или системный жест)
+    return PopScope(
+      canPop: true,
+      onPopInvoked: (didPop) {
+        if (didPop && !_isCancelled) {
+          // Если это штатный выход (не через кнопку Отмена), применяем изменения
+          _saveAllSettings();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Настройки приложения'),
+          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        ),
+        body: ListView(
+          padding: const EdgeInsets.symmetric(vertical: 16.0),
+          children: [
+            _buildSectionHeader(Icons.map, 'Визуализация на карте'),
+            _buildDropdownRow(
+              'Время отображения трека',
+              _trackTimeMs,
+              _trackTimeOptions,
+              (val) => setState(() => _trackTimeMs = val as int),
+            ),
+            _buildSliderRow(
+              'Толщина линии трека',
+              _trackWidth,
+              1.0,
+              10.0,
+              9,
+              (val) => setState(() => _trackWidth = val),
+            ),
+            const Divider(height: 32),
 
-          _buildSectionHeader(Icons.filter_alt, 'Анти-джиттер фильтр'),
-          _buildSliderRow(
-            'Радиус фильтрации',
-            _jitterRadius,
-            5.0,
-            30.0,
-            25,
-            (val) => setState(() => _jitterRadius = val),
-            suffix: ' м',
-          ),
-          _buildSliderRow(
-            'Количество проверяемых точек',
-            _jitterPoints.toDouble(),
-            1.0,
-            10.0,
-            9,
-            (val) => setState(() => _jitterPoints = val.toInt()),
-            isInteger: true,
-          ),
-          const Divider(height: 32),
+            _buildSectionHeader(Icons.filter_alt, 'Фильтр блуждания'),
+            _buildSliderRow(
+              'Радиус фильтрации',
+              _jitterRadius,
+              5.0,
+              30.0,
+              25,
+              (val) => setState(() => _jitterRadius = val),
+              suffix: ' м',
+            ),
+            _buildSliderRow(
+              'Количество проверяемых точек',
+              _jitterPoints.toDouble(),
+              1.0,
+              10.0,
+              9,
+              (val) => setState(() => _jitterPoints = val.toInt()),
+              isInteger: true,
+            ),
+            const Divider(height: 32),
 
-          _buildSectionHeader(Icons.settings_system_daydream, 'Системные'),
-          SwitchListTile(
-            title: const Text('Не выключать экран (Wakelock)', style: TextStyle(fontWeight: FontWeight.w500)),
-            subtitle: const Text('Предотвращает засыпание устройства на Карте'),
-            value: _keepScreenOn,
-            onChanged: (val) => setState(() => _keepScreenOn = val),
-          ),
-          SwitchListTile(
-            title: const Text('Тёмная тема', style: TextStyle(fontWeight: FontWeight.w500)),
-            subtitle: const Text('Снижает расход батареи смартфона'),
-            value: _darkTheme,
-            onChanged: (val) => setState(() => _darkTheme = val),
-          ),
-        ],
+            _buildSectionHeader(Icons.settings_system_daydream, 'Системные'),
+            SwitchListTile(
+              title: const Text('Не гасить карту', style: TextStyle(fontWeight: FontWeight.w500)),
+              subtitle: const Text('Предотвращает засыпание устройства на Карте'),
+              value: _keepScreenOn,
+              onChanged: (val) => setState(() => _keepScreenOn = val),
+            ),
+            SwitchListTile(
+              title: const Text('Тёмная тема', style: TextStyle(fontWeight: FontWeight.w500)),
+              subtitle: const Text('Снижает расход батареи смартфона'),
+              value: _darkTheme,
+              onChanged: (val) => setState(() => _darkTheme = val),
+            ),
+            
+            const SizedBox(height: 24),
+            const Divider(height: 1),
+            const SizedBox(height: 24),
+
+            // БЛОК УПРАВЛЕНИЯ ИЗМЕНЕНИЯМИ (Кнопки)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _isCancelled = true; // Выставляем флаг отмены
+                        });
+                        Navigator.pop(context); // Выходим, PopScope увидит флаг и не запишет данные
+                      },
+                      icon: const Icon(Icons.cancel_outlined),
+                      label: const Text('Отменить изменения'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        side: BorderSide(color: Colors.grey.shade400),
+                        foregroundColor: Colors.grey.shade700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _showResetConfirmation(context),
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('По умолчанию'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        backgroundColor: Colors.orange.shade50,
+                        foregroundColor: Colors.orange.shade900,
+                        elevation: 0,
+                        side: BorderSide(color: Colors.orange.shade200),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+
+  // --- Вспомогательные виджеты ---
 
   Widget _buildSectionHeader(IconData icon, String title) {
     return Padding(
