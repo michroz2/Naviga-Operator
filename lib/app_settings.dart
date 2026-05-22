@@ -1,8 +1,7 @@
 /*
  * Файл: app_settings.dart
- * Версия: 1.34.5
- * Изменения: UC-23, Шаг 7. Добавлены параметры конфигурации сетки: gridWidth (толщина) и gridOpacity (прозрачность) с поддержкой сохранения на диск.
- * Описание: Менеджер локальных настроек приложения.
+ * Версия: 1.35.1
+ * Изменения: Добавлен параметр invertMapColors для инверсии цветов слоя карты.
  */
 
 import 'package:flutter/foundation.dart';
@@ -15,8 +14,7 @@ class AppSettings extends ChangeNotifier {
 
   SharedPreferences? _prefs;
 
-  // --- Значения по умолчанию (заводские) ---
-  int _trackTimeMs = 1800000; // 30 минут
+  int _trackTimeMs = 1800000; 
   double _trackWidth = 4.0;
   double _jitterRadius = 10.0;
   int _jitterPoints = 3;
@@ -26,17 +24,17 @@ class AppSettings extends ChangeNotifier {
   bool _showGrid = false;
   int _compassMode = 0; 
   
-  // Новые параметры настройки сетки
   double _gridWidth = 1.0;
   double _gridOpacity = 0.35;
+  
+  // НОВЫЙ ПАРАМЕТР: Инверсия карты
+  bool _invertMapColors = false;
 
-  // --- Инициализация (вызывается при старте приложения) ---
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
     _loadSettings();
   }
 
-  // --- Чтение с диска ---
   void _loadSettings() {
     if (_prefs == null) return;
     
@@ -53,10 +51,11 @@ class AppSettings extends ChangeNotifier {
     _gridWidth = _prefs!.getDouble('gridWidth') ?? 1.0;
     _gridOpacity = _prefs!.getDouble('gridOpacity') ?? 0.35;
     
+    _invertMapColors = _prefs!.getBool('invertMapColors') ?? false;
+    
     notifyListeners();
   }
 
-  // --- Геттеры ---
   int get trackTimeMs => _trackTimeMs;
   double get trackWidth => _trackWidth;
   double get jitterRadius => _jitterRadius;
@@ -69,8 +68,9 @@ class AppSettings extends ChangeNotifier {
   
   double get gridWidth => _gridWidth;
   double get gridOpacity => _gridOpacity;
+  
+  bool get invertMapColors => _invertMapColors;
 
-  // --- Сеттеры с сохранением на диск ---
   void setTrackTimeMs(int value) {
     if (_trackTimeMs != value) {
       _trackTimeMs = value;
@@ -147,6 +147,14 @@ class AppSettings extends ChangeNotifier {
     if (_gridOpacity != value) {
       _gridOpacity = value;
       _prefs?.setDouble('gridOpacity', value);
+      notifyListeners();
+    }
+  }
+
+  void setInvertMapColors(bool value) {
+    if (_invertMapColors != value) {
+      _invertMapColors = value;
+      _prefs?.setBool('invertMapColors', value);
       notifyListeners();
     }
   }

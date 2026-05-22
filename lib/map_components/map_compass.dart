@@ -1,7 +1,7 @@
 /*
  * Файл: map_compass.dart
- * Версия: 1.35.0
- * Описание: Интерактивный виджет управления режимами вращения карты (компас).
+ * Версия: 1.35.1
+ * Изменения: Цвета виджета адаптированы к системной теме (Surface/OnSurface).
  */
 
 import 'dart:math' as math;
@@ -18,6 +18,11 @@ class MapCompassWidget extends StatelessWidget {
     final rotation = camera.rotation; 
     final mode = AppSettings().compassMode;
 
+    // Адаптация под активную тему
+    final colorScheme = Theme.of(context).colorScheme;
+    final surfaceColor = colorScheme.surface;
+    final onSurfaceColor = colorScheme.onSurface;
+
     return Padding(
       padding: const EdgeInsets.only(top: 16.0, right: 16.0),
       child: GestureDetector(
@@ -28,7 +33,7 @@ class MapCompassWidget extends StatelessWidget {
           width: 48,
           height: 48,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.85),
+            color: surfaceColor.withOpacity(0.85),
             shape: BoxShape.circle,
             boxShadow: const [
               BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))
@@ -38,7 +43,8 @@ class MapCompassWidget extends StatelessWidget {
             angle: rotation * math.pi / 180,
             child: Icon(
               Icons.navigation, 
-              color: mode == 2 ? Colors.blue.shade700 : Colors.blueGrey,
+              // При включенном датчике оставляем синий цвет индикации, иначе цвет темы
+              color: mode == 2 ? Colors.blue.shade700 : onSurfaceColor,
               size: 28,
             ),
           ),

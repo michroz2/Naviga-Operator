@@ -1,8 +1,7 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.35.0
- * Изменения: Архитектурный рефакторинг. Логика UI-компонентов (сетка, компас, линейка, стили) вынесена в папку map_components/.
- * Описание: Главный экран-оркестратор визуализации узлов на интерактивной карте.
+ * Версия: 1.35.1
+ * Изменения: Интеграция математического инвертирования цветов (тактический режим) для TileLayer на основе AppSettings().invertMapColors.
  */
 
 import 'dart:async';
@@ -16,7 +15,6 @@ import 'ble_service.dart';
 import 'roster_screen.dart'; 
 import 'app_settings.dart'; 
 
-// Импорты изолированных компонентов карты
 import 'map_components/map_marker_manager.dart';
 import 'map_components/map_scale_bar.dart';
 import 'map_components/map_compass.dart';
@@ -150,11 +148,25 @@ class _MapScreenState extends State<MapScreen> {
               },
             ),
             children: [
-              // 1. Фон карты
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.michroz2.naviga_operator',
-              ),
+              // 1. Фон карты с аппаратным фильтром инверсии (Тактический режим)
+              if (AppSettings().invertMapColors)
+                ColorFiltered(
+                  colorFilter: const ColorFilter.matrix(<double>[
+                    -1,  0,  0, 0, 255,
+                     0, -1,  0, 0, 255,
+                     0,  0, -1, 0, 255,
+                     0,  0,  0, 1,   0,
+                  ]),
+                  child: TileLayer(
+                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.michroz2.naviga_operator',
+                  ),
+                )
+              else
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.michroz2.naviga_operator',
+                ),
               
               // 2. Оптимизированный слой сетки
               if (_isMapReady && AppSettings().showGrid)

@@ -1,8 +1,7 @@
 /*
  * Файл: settings_screen.dart
- * Версия: 1.34.5
- * Изменения: UC-23, Шаг 7. Добавлен UI-интерфейс управления толщиной и прозрачностью координатной сетки (ползунки добавлены в буферную зону редактирования экрана настроек).
- * Описание: Экран управления локальными настройками приложения.
+ * Версия: 1.35.1
+ * Изменения: Добавлен свитч "Инверсия цветов карты" (ночной режим подложки).
  */
 
 import 'package:flutter/material.dart';
@@ -18,7 +17,6 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final AppSettings _settings = AppSettings();
 
-  // Локальный буфер текущей сессии редактирования
   late int _trackTimeMs;
   late double _trackWidth;
   late double _jitterRadius;
@@ -29,8 +27,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late int _compassMode;
   late double _gridWidth;
   late double _gridOpacity;
+  late bool _invertMapColors;
 
-  // Флаг, указывающий, что пользователь явно отменил изменения
   bool _isCancelled = false;
 
   final Map<int, String> _trackTimeOptions = {
@@ -51,7 +49,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    // Кэшируем глобальные настройки в локальный буфер при инициализации экрана
     _trackTimeMs = _settings.trackTimeMs;
     _trackWidth = _settings.trackWidth;
     _jitterRadius = _settings.jitterRadius;
@@ -62,9 +59,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _compassMode = _settings.compassMode;
     _gridWidth = _settings.gridWidth;
     _gridOpacity = _settings.gridOpacity;
+    _invertMapColors = _settings.invertMapColors;
   }
 
-  // Метод сохранения локального буфера в глобальные настройки
   void _saveAllSettings() {
     _settings.setTrackTimeMs(_trackTimeMs);
     _settings.setTrackWidth(_trackWidth);
@@ -76,9 +73,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _settings.setCompassMode(_compassMode);
     _settings.setGridWidth(_gridWidth);
     _settings.setGridOpacity(_gridOpacity);
+    _settings.setInvertMapColors(_invertMapColors);
   }
 
-  // Диалог подтверждения сброса настроек по умолчанию
   void _showResetConfirmation(BuildContext context) {
     showDialog(
       context: context,
@@ -95,7 +92,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onPressed: () {
                 Navigator.of(ctx).pop();
                 setState(() {
-                  // Выставляем первоначальные жесткие дефолты в буфер
                   _trackTimeMs = 1800000;
                   _trackWidth = 4.0;
                   _jitterRadius = 10.0;
@@ -106,6 +102,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _compassMode = 0;
                   _gridWidth = 1.0;
                   _gridOpacity = 0.35;
+                  _invertMapColors = false;
                 });
               },
               style: TextButton.styleFrom(foregroundColor: Colors.orange.shade900),
@@ -135,6 +132,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           padding: const EdgeInsets.symmetric(vertical: 16.0),
           children: [
             _buildSectionHeader(Icons.map, 'Визуализация на карте'),
+            SwitchListTile(
+              title: const Text('Инверсия цветов карты', style: TextStyle(fontWeight: FontWeight.w500)),
+              subtitle: const Text('Тактический (ночной) режим отображения карты'),
+              value: _invertMapColors,
+              onChanged: (val) => setState(() => _invertMapColors = val),
+            ),
             SwitchListTile(
               title: const Text('Координатная сетка', style: TextStyle(fontWeight: FontWeight.w500)),
               subtitle: const Text('Отображение географической сетки поверх карты'),
@@ -211,7 +214,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             SwitchListTile(
               title: const Text('Тёмная тема', style: TextStyle(fontWeight: FontWeight.w500)),
-              subtitle: const Text('Снижает расход батареи смартфона'),
+              subtitle: const Text('Снижает расход батареи смартфона (глобально)'),
               value: _darkTheme,
               onChanged: (val) => setState(() => _darkTheme = val),
             ),

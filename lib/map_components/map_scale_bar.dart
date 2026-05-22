@@ -1,7 +1,7 @@
 /*
  * Файл: map_scale_bar.dart
- * Версия: 1.35.0
- * Описание: Перманентная интерактивная масштабная линейка карты.
+ * Версия: 1.35.1
+ * Изменения: Цвета контейнера, текста и линии адаптированы к системной теме (Surface/OnSurface).
  */
 
 import 'dart:math' as math;
@@ -45,6 +45,11 @@ class MapScaleBar extends StatelessWidget {
         : '${selectedScale.toStringAsFixed(0)} м';
 
     final bool showGrid = AppSettings().showGrid;
+    
+    // Адаптация под активную тему
+    final colorScheme = Theme.of(context).colorScheme;
+    final surfaceColor = colorScheme.surface;
+    final onSurfaceColor = colorScheme.onSurface;
 
     return Padding(
       padding: const EdgeInsets.only(left: 16.0, bottom: 24.0),
@@ -60,15 +65,15 @@ class MapScaleBar extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.8),
+                color: surfaceColor.withOpacity(0.85),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
-                  color: Colors.black87,
+                  color: onSurfaceColor,
                 ),
               ),
             ),
@@ -77,8 +82,8 @@ class MapScaleBar extends StatelessWidget {
               width: scaleWidth,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.black87,
-                border: Border.all(color: Colors.white, width: 1),
+                color: onSurfaceColor,
+                border: Border.all(color: surfaceColor.withOpacity(0.85), width: 1),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
