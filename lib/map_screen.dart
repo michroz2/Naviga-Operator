@@ -1,7 +1,7 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.33.6
- * Изменения: Хотфикс UC-23. Добавлен флаг _isMapReady и коллбэк onMapReady для предотвращения LateInitializationError при попытке вращения карты до её полной отрисовки.
+ * Версия: 1.34.3
+ * Изменения: UC-23, Шаг 5. Добавлен слой координатной сетки с защитой от LateInitializationError через проверку флага _isMapReady. Шаг сетки привязан к масштабу местности. Графическая полоса масштабной линейки скрывается при включенной сетке.
  * Описание: Экран визуализации узлов на интерактивной карте.
  */
 
@@ -110,6 +110,8 @@ class MapScaleBar extends StatelessWidget {
         ? '${(selectedScale / 1000).toStringAsFixed(0)} км' 
         : '${selectedScale.toStringAsFixed(0)} м';
 
+    final bool showGrid = AppSettings().showGrid;
+
     return Padding(
       padding: const EdgeInsets.only(left: 16.0, bottom: 24.0),
       child: Column(
@@ -131,16 +133,18 @@ class MapScaleBar extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 2),
-          Container(
-            width: scaleWidth,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.black87,
-              border: Border.all(color: Colors.white, width: 1),
-              borderRadius: BorderRadius.circular(2),
+          if (!showGrid) ...[
+            const SizedBox(height: 2),
+            Container(
+              width: scaleWidth,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.black87,
+                border: Border.all(color: Colors.white, width: 1),
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -221,9 +225,6 @@ class _MapScreenState extends State<MapScreen> {
     }
 
     AppSettings().addListener(_onSettingsChanged);
-    
-    // ИЗМЕНЕНИЕ 1.33.6: Мы больше не вызываем _applyCompassMode() здесь!
-    // Карта еще не создана. Мы ждем коллбэк onMapReady.
   }
 
   @override
@@ -281,6 +282,72 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  // Метод динамической генерации сетки на основе шага масштабной линейки
+  List<Polyline> _buildGridLines(MapCamera camera) {
+    final lat = camera.center.latitude;
+    final zoom = camera.zoom;
+    final bounds = camera.visibleBounds;
+
+    final metersPerPixel = (math.cos(lat * math.pi / 180) * 2 * math.pi * 6378137) / (256 * math.pow(2, zoom));
+    
+    final List<double> scaleSteps = [
+      1, 2, 5, 10, 20, 50, 100, 200, 500, 
+      1000, 2000, 5000, 10000, 20000, 50000, 
+      100000, 200000, 500000, 1000000, 2000000, 5000000
+    ];
+    
+    const double targetPixels = 100.0;
+    final double distanceMeters = targetPixels * metersPerPixel;
+    
+    double selectedScale = scaleSteps.first;
+    for (var step in scaleSteps) {
+      if (distanceMeters >= step) {
+        selectedScale = step;
+      } else {
+        break;
+      }
+    }
+
+    // Перевод метров шага в градусы широты и долготы для текущего региона
+    const double metersPerLatDegree = 111319.9;
+    final double latStep = selectedScale / metersPerLatDegree;
+    final double lonStep = selectedScale / (metersPerLatDegree * math.cos(lat * math.pi / 180));
+
+    List<Polyline> lines = [];
+
+    if (latStep <= 0 || lonStep <= 0) return lines;
+
+    final double startLat = (bounds.south / latStep).floor() * latStep;
+    final double endLat = (bounds.north / latStep).ceil() * latStep;
+    final double startLon = (bounds.west / lonStep).floor() * lonStep;
+    final double endLon = (bounds.east / lonStep).ceil() * lonStep;
+
+    // Защитный барьер производительности при сильном отдалении
+    int latLinesCount = ((endLat - startLat) / latStep).abs().toInt();
+    int lonLinesCount = ((endLon - startLon) / lonStep).abs().toInt();
+    if (latLinesCount > 120 || lonLinesCount > 120) return lines;
+
+    // Отрисовка горизонтальных линий сетки (широта)
+    for (double l = startLat; l <= endLat; l += latStep) {
+      lines.add(Polyline(
+        points: [LatLng(l, bounds.west), LatLng(l, bounds.east)],
+        strokeWidth: 1.0,
+        color: Colors.grey.withOpacity(0.35),
+      ));
+    }
+
+    // Отрисовка вертикальных линий сетки (долгота)
+    for (double ln = startLon; ln <= endLon; ln += lonStep) {
+      lines.add(Polyline(
+        points: [LatLng(bounds.south, ln), LatLng(bounds.north, ln)],
+        strokeWidth: 1.0,
+        color: Colors.grey.withOpacity(0.35),
+      ));
+    }
+
+    return lines;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -327,6 +394,7 @@ class _MapScreenState extends State<MapScreen> {
               onMapReady: () {
                 _isMapReady = true;
                 _applyCompassMode();
+                setState(() {});
               },
             ),
             children: [
@@ -334,6 +402,11 @@ class _MapScreenState extends State<MapScreen> {
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.michroz2.naviga_operator',
               ),
+              // Защищенный слой сетки, активируемый флагом настроек после готовности карты
+              if (_isMapReady && AppSettings().showGrid)
+                PolylineLayer(
+                  polylines: _buildGridLines(_mapController.camera),
+                ),
               PolylineLayer(
                 polylines: nodes.map((node) {
                   final isMe = node.nodeId == myId;

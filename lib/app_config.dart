@@ -1,10 +1,7 @@
 /*
  * Файл: app_config.dart
- * Версия: 1.26
- * Изменения: ЭТАП 4, Шаг 1 (Рефакторинг ядра). Создан единый источник правды (Single Source of Truth) для версии и глобальных констант.
- * Описание: Файл конфигурации приложения.
  */
 
 class AppConfig {
-  static const String version = '1.33.6';
+  static const String version = '1.34.3';
 }
