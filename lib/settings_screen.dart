@@ -1,7 +1,7 @@
 /*
  * Файл: settings_screen.dart
- * Версия: 1.33.2
- * Изменения: UC-23, Шаг 2. Добавлен UI для управления отображением сетки и выбором дефолтного режима компаса.
+ * Версия: 1.34.5
+ * Изменения: UC-23, Шаг 7. Добавлен UI-интерфейс управления толщиной и прозрачностью координатной сетки (ползунки добавлены в буферную зону редактирования экрана настроек).
  * Описание: Экран управления локальными настройками приложения.
  */
 
@@ -27,6 +27,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late bool _darkTheme;
   late bool _showGrid;
   late int _compassMode;
+  late double _gridWidth;
+  late double _gridOpacity;
 
   // Флаг, указывающий, что пользователь явно отменил изменения
   bool _isCancelled = false;
@@ -58,6 +60,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _darkTheme = _settings.darkTheme;
     _showGrid = _settings.showGrid;
     _compassMode = _settings.compassMode;
+    _gridWidth = _settings.gridWidth;
+    _gridOpacity = _settings.gridOpacity;
   }
 
   // Метод сохранения локального буфера в глобальные настройки
@@ -70,6 +74,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _settings.setDarkTheme(_darkTheme);
     _settings.setShowGrid(_showGrid);
     _settings.setCompassMode(_compassMode);
+    _settings.setGridWidth(_gridWidth);
+    _settings.setGridOpacity(_gridOpacity);
   }
 
   // Диалог подтверждения сброса настроек по умолчанию
@@ -98,6 +104,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _darkTheme = false;
                   _showGrid = false;
                   _compassMode = 0;
+                  _gridWidth = 1.0;
+                  _gridOpacity = 0.35;
                 });
               },
               style: TextButton.styleFrom(foregroundColor: Colors.orange.shade900),
@@ -111,12 +119,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // PopScope перехватывает выход с экрана (нажатие "Назад" в AppBar или системный жест)
     return PopScope(
       canPop: true,
       onPopInvoked: (didPop) {
         if (didPop && !_isCancelled) {
-          // Если это штатный выход (не через кнопку Отмена), применяем изменения
           _saveAllSettings();
         }
       },
@@ -134,6 +140,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: const Text('Отображение географической сетки поверх карты'),
               value: _showGrid,
               onChanged: (val) => setState(() => _showGrid = val),
+            ),
+            _buildSliderRow(
+              'Толщина линий сетки',
+              _gridWidth,
+              0.5,
+              5.0,
+              9,
+              (val) => setState(() => _gridWidth = val),
+            ),
+            _buildSliderRow(
+              'Яркость сетки',
+              _gridOpacity * 100,
+              10.0,
+              100.0,
+              9,
+              (val) => setState(() => _gridOpacity = val / 100),
+              suffix: '%',
+              isInteger: true,
             ),
             _buildDropdownRow(
               'Режим компаса',
@@ -196,7 +220,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const Divider(height: 1),
             const SizedBox(height: 24),
 
-            // БЛОК УПРАВЛЕНИЯ ИЗМЕНЕНИЯМИ (Кнопки)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Row(
@@ -205,9 +228,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: OutlinedButton.icon(
                       onPressed: () {
                         setState(() {
-                          _isCancelled = true; // Выставляем флаг отмены
+                          _isCancelled = true; 
                         });
-                        Navigator.pop(context); // Выходим, PopScope увидит флаг и не запишет данные
+                        Navigator.pop(context); 
                       },
                       icon: const Icon(Icons.cancel_outlined),
                       label: const Text('Отменить изменения'),
@@ -241,8 +264,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-
-  // --- Вспомогательные виджеты ---
 
   Widget _buildSectionHeader(IconData icon, String title) {
     return Padding(

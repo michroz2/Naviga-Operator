@@ -1,7 +1,7 @@
 /*
  * Файл: app_settings.dart
- * Версия: 1.33.2
- * Изменения: UC-23, Шаг 2. Внедрение параметров showGrid и compassMode для управления навигационными элементами карты.
+ * Версия: 1.34.5
+ * Изменения: UC-23, Шаг 7. Добавлены параметры конфигурации сетки: gridWidth (толщина) и gridOpacity (прозрачность) с поддержкой сохранения на диск.
  * Описание: Менеджер локальных настроек приложения.
  */
 
@@ -23,9 +23,12 @@ class AppSettings extends ChangeNotifier {
   bool _keepScreenOn = false;
   bool _darkTheme = false;
   
-  // Новые параметры UC-23
   bool _showGrid = false;
-  int _compassMode = 0; // 0 - Север сверху, 1 - Свободное вращение, 2 - Магнитный компас
+  int _compassMode = 0; 
+  
+  // Новые параметры настройки сетки
+  double _gridWidth = 1.0;
+  double _gridOpacity = 0.35;
 
   // --- Инициализация (вызывается при старте приложения) ---
   Future<void> init() async {
@@ -47,6 +50,9 @@ class AppSettings extends ChangeNotifier {
     _showGrid = _prefs!.getBool('showGrid') ?? false;
     _compassMode = _prefs!.getInt('compassMode') ?? 0;
     
+    _gridWidth = _prefs!.getDouble('gridWidth') ?? 1.0;
+    _gridOpacity = _prefs!.getDouble('gridOpacity') ?? 0.35;
+    
     notifyListeners();
   }
 
@@ -60,6 +66,9 @@ class AppSettings extends ChangeNotifier {
   
   bool get showGrid => _showGrid;
   int get compassMode => _compassMode;
+  
+  double get gridWidth => _gridWidth;
+  double get gridOpacity => _gridOpacity;
 
   // --- Сеттеры с сохранением на диск ---
   void setTrackTimeMs(int value) {
@@ -122,6 +131,22 @@ class AppSettings extends ChangeNotifier {
     if (_compassMode != value) {
       _compassMode = value;
       _prefs?.setInt('compassMode', value);
+      notifyListeners();
+    }
+  }
+
+  void setGridWidth(double value) {
+    if (_gridWidth != value) {
+      _gridWidth = value;
+      _prefs?.setDouble('gridWidth', value);
+      notifyListeners();
+    }
+  }
+
+  void setGridOpacity(double value) {
+    if (_gridOpacity != value) {
+      _gridOpacity = value;
+      _prefs?.setDouble('gridOpacity', value);
       notifyListeners();
     }
   }

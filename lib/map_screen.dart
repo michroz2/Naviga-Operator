@@ -1,7 +1,7 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.34.4
- * Изменения: UC-23, Шаг 6. Добавлена интерактивность для масштабной линейки. Компонент MapScaleBar обернут в GestureDetector для циклического переключения видимости координатной сетки по тапу.
+ * Версия: 1.34.5
+ * Изменения: UC-23, Шаг 7. Параметры strokeWidth и opacity в методе _buildGridLines переведены на чтение динамических глобальных настроек gridWidth и gridOpacity. Все исправления инициализации и интерактивности масштабной линейки (из 1.35.0/1.34.4) полностью сохранены.
  * Описание: Экран визуализации узлов на интерактивной карте.
  */
 
@@ -116,7 +116,6 @@ class MapScaleBar extends StatelessWidget {
       padding: const EdgeInsets.only(left: 16.0, bottom: 24.0),
       child: GestureDetector(
         onTap: () {
-          // Переключение режима отображения сетки по тапу на маркер масштаба
           AppSettings().setShowGrid(!showGrid);
         },
         behavior: HitTestBehavior.opaque,
@@ -167,14 +166,13 @@ class MapCompassWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final camera = MapCamera.of(context);
-    final rotation = camera.rotation; // Угол поворота карты в градусах
+    final rotation = camera.rotation; 
     final mode = AppSettings().compassMode;
 
     return Padding(
       padding: const EdgeInsets.only(top: 16.0, right: 16.0),
       child: GestureDetector(
         onTap: () {
-          // Цикличное переключение: 0 -> 1 -> 2 -> 0
           AppSettings().setCompassMode((mode + 1) % 3);
         },
         child: Container(
@@ -190,7 +188,7 @@ class MapCompassWidget extends StatelessWidget {
           child: Transform.rotate(
             angle: rotation * math.pi / 180,
             child: Icon(
-              Icons.navigation, // Стрелка
+              Icons.navigation, 
               color: mode == 2 ? Colors.blue.shade700 : Colors.blueGrey,
               size: 28,
             ),
@@ -217,8 +215,6 @@ class _MapScreenState extends State<MapScreen> {
   
   StreamSubscription<CompassEvent>? _compassSubscription;
   late int _lastCompassMode;
-  
-  // ИЗМЕНЕНИЕ 1.33.6: Флаг готовности карты
   bool _isMapReady = false;
 
   @override
@@ -254,13 +250,11 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _applyCompassMode() {
-    // ИЗМЕНЕНИЕ 1.33.6: Защита от обращения к контроллеру до готовности карты
     if (!_isMapReady) return;
 
     final mode = AppSettings().compassMode;
     
     if (mode == 2) {
-      // Режим 2: Следование за датчиком смартфона
       if (_compassSubscription == null) {
         _compassSubscription = FlutterCompass.events?.listen((event) {
           if (event.heading != null && mounted) {
@@ -269,12 +263,10 @@ class _MapScreenState extends State<MapScreen> {
         });
       }
     } else {
-      // Режим 0 и 1: Отключаем аппаратный датчик
       _compassSubscription?.cancel();
       _compassSubscription = null;
       
       if (mode == 0) {
-        // Жесткий сброс на Север
         _mapController.rotate(0);
       }
     }
@@ -289,7 +281,6 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  // Метод динамической генерации сетки на основе шага масштабной линейки
   List<Polyline> _buildGridLines(MapCamera camera) {
     final lat = camera.center.latitude;
     final zoom = camera.zoom;
@@ -315,7 +306,6 @@ class _MapScreenState extends State<MapScreen> {
       }
     }
 
-    // Перевод метров шага в градусы широты и долготы для текущего региона
     const double metersPerLatDegree = 111319.9;
     final double latStep = selectedScale / metersPerLatDegree;
     final double lonStep = selectedScale / (metersPerLatDegree * math.cos(lat * math.pi / 180));
@@ -329,26 +319,27 @@ class _MapScreenState extends State<MapScreen> {
     final double startLon = (bounds.west / lonStep).floor() * lonStep;
     final double endLon = (bounds.east / lonStep).ceil() * lonStep;
 
-    // Защитный барьер производительности при сильном отдалении
     int latLinesCount = ((endLat - startLat) / latStep).abs().toInt();
     int lonLinesCount = ((endLon - startLon) / lonStep).abs().toInt();
     if (latLinesCount > 120 || lonLinesCount > 120) return lines;
 
-    // Отрисовка горизонтальных линий сетки (широта)
+    // Чтение динамических настроек внешнего вида сетки
+    final double strokeWidth = AppSettings().gridWidth;
+    final Color gridColor = Colors.grey.withOpacity(AppSettings().gridOpacity);
+
     for (double l = startLat; l <= endLat; l += latStep) {
       lines.add(Polyline(
         points: [LatLng(l, bounds.west), LatLng(l, bounds.east)],
-        strokeWidth: 1.0,
-        color: Colors.grey.withOpacity(0.35),
+        strokeWidth: strokeWidth,
+        color: gridColor,
       ));
     }
 
-    // Отрисовка вертикальных линий сетки (долгота)
     for (double ln = startLon; ln <= endLon; ln += lonStep) {
       lines.add(Polyline(
         points: [LatLng(bounds.south, ln), LatLng(bounds.north, ln)],
-        strokeWidth: 1.0,
-        color: Colors.grey.withOpacity(0.35),
+        strokeWidth: strokeWidth,
+        color: gridColor,
       ));
     }
 
@@ -397,7 +388,6 @@ class _MapScreenState extends State<MapScreen> {
               interactionOptions: InteractionOptions(
                 flags: interactiveFlags,
               ),
-              // ИЗМЕНЕНИЕ 1.33.6: Безопасный запуск компаса после рендеринга
               onMapReady: () {
                 _isMapReady = true;
                 _applyCompassMode();
@@ -409,7 +399,6 @@ class _MapScreenState extends State<MapScreen> {
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.michroz2.naviga_operator',
               ),
-              // Защищенный слой сетки, активируемый флагом настроек после готовности карты
               if (_isMapReady && AppSettings().showGrid)
                 PolylineLayer(
                   polylines: _buildGridLines(_mapController.camera),
