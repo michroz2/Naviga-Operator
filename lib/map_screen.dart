@@ -1,7 +1,7 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.34.5
- * Изменения: UC-23, Шаг 7. Параметры strokeWidth и opacity в методе _buildGridLines переведены на чтение динамических глобальных настроек gridWidth и gridOpacity. Все исправления инициализации и интерактивности масштабной линейки (из 1.35.0/1.34.4) полностью сохранены.
+ * Версия: 1.34.7
+ * Изменения: UC-23, Шаг 9. Решена проблема рассинхронизации отрисовки сетки и маркера масштаба: логика сетки выделена в независимый виджет MapGridLayer, слушающий камеру напрямую. Линейка масштаба (MapScaleBar) сделана перманентной (видимой всегда).
  * Описание: Экран визуализации узлов на интерактивной карте.
  */
 
@@ -73,7 +73,7 @@ class MarkerStyleManager {
 }
 
 // ============================================================================
-// Компонент: Масштабная линейка (Scale Bar)
+// Компонент: Масштабная линейка (Scale Bar) - Перманентная
 // ============================================================================
 class MapScaleBar extends StatelessWidget {
   const MapScaleBar({super.key});
@@ -138,18 +138,17 @@ class MapScaleBar extends StatelessWidget {
                 ),
               ),
             ),
-            if (!showGrid) ...[
-              const SizedBox(height: 2),
-              Container(
-                width: scaleWidth,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.black87,
-                  border: Border.all(color: Colors.white, width: 1),
-                  borderRadius: BorderRadius.circular(2),
-                ),
+            // ИЗМЕНЕНИЕ: Линейка отрисовывается всегда, независимо от флага showGrid
+            const SizedBox(height: 2),
+            Container(
+              width: scaleWidth,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.black87,
+                border: Border.all(color: Colors.white, width: 1),
+                borderRadius: BorderRadius.circular(2),
               ),
-            ],
+            ),
           ],
         ),
       ),
@@ -196,6 +195,117 @@ class MapCompassWidget extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+// ============================================================================
+// Компонент: Слой координатной сетки (Синхронизированный с камерой)
+// ============================================================================
+class MapGridLayer extends StatefulWidget {
+  const MapGridLayer({super.key});
+
+  @override
+  State<MapGridLayer> createState() => _MapGridLayerState();
+}
+
+class _MapGridLayerState extends State<MapGridLayer> {
+  // --- Кэширование (Мемоизация) ---
+  List<Polyline> _cachedGrid = [];
+  double _lastGridScale = -1;
+  LatLng _lastGridCenter = const LatLng(0, 0);
+  double _lastGridWidth = -1;
+  double _lastGridOpacity = -1;
+  double _currentGridBufferLat = 0;
+  double _currentGridBufferLon = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    // Подписываемся на обновления камеры карты напрямую! 
+    // Это гарантирует мгновенную перерисовку сетки в тот же кадр, когда меняется маркер масштаба.
+    final camera = MapCamera.of(context);
+    final lat = camera.center.latitude;
+    final lon = camera.center.longitude;
+    final zoom = camera.zoom;
+
+    final metersPerPixel = (math.cos(lat * math.pi / 180) * 2 * math.pi * 6378137) / (256 * math.pow(2, zoom));
+    
+    final List<double> scaleSteps = [
+      1, 2, 5, 10, 20, 50, 100, 200, 500, 
+      1000, 2000, 5000, 10000, 20000, 50000, 
+      100000, 200000, 500000, 1000000, 2000000, 5000000
+    ];
+    
+    const double targetPixels = 100.0;
+    final double distanceMeters = targetPixels * metersPerPixel;
+    
+    double selectedScale = scaleSteps.first;
+    for (var step in scaleSteps) {
+      if (distanceMeters >= step) {
+        selectedScale = step;
+      } else {
+        break;
+      }
+    }
+
+    final double strokeWidth = AppSettings().gridWidth;
+    final double gridOpacity = AppSettings().gridOpacity;
+
+    final double distLat = (lat - _lastGridCenter.latitude).abs();
+    final double distLon = (lon - _lastGridCenter.longitude).abs();
+
+    // Проверка кэша
+    if (_cachedGrid.isNotEmpty &&
+        _lastGridScale == selectedScale &&
+        _lastGridWidth == strokeWidth &&
+        _lastGridOpacity == gridOpacity &&
+        distLat < (_currentGridBufferLat * 0.6) && 
+        distLon < (_currentGridBufferLon * 0.6)) {
+      return PolylineLayer(polylines: _cachedGrid);
+    }
+
+    // --- Кэш промах: Генерация новой сетки ---
+    const double metersPerLatDegree = 111319.9;
+    final double latStep = selectedScale / metersPerLatDegree;
+    
+    final double cosLat = math.max(0.01, math.cos(lat * math.pi / 180));
+    final double lonStep = selectedScale / (metersPerLatDegree * cosLat);
+
+    if (latStep <= 0 || lonStep <= 0) return const SizedBox.shrink();
+
+    _currentGridBufferLat = math.min(0.5, 100 * latStep);
+    _currentGridBufferLon = math.min(0.5 / cosLat, 100 * lonStep);
+
+    final double startLat = ((lat - _currentGridBufferLat) / latStep).floor() * latStep;
+    final double endLat = ((lat + _currentGridBufferLat) / latStep).ceil() * latStep;
+    final double startLon = ((lon - _currentGridBufferLon) / lonStep).floor() * lonStep;
+    final double endLon = ((lon + _currentGridBufferLon) / lonStep).ceil() * lonStep;
+
+    List<Polyline> lines = [];
+    final Color gridColor = Colors.grey.withOpacity(gridOpacity);
+
+    for (double l = startLat; l <= endLat; l += latStep) {
+      lines.add(Polyline(
+        points: [LatLng(l, startLon), LatLng(l, endLon)],
+        strokeWidth: strokeWidth,
+        color: gridColor,
+      ));
+    }
+
+    for (double ln = startLon; ln <= endLon; ln += lonStep) {
+      lines.add(Polyline(
+        points: [LatLng(startLat, ln), LatLng(endLat, ln)],
+        strokeWidth: strokeWidth,
+        color: gridColor,
+      ));
+    }
+
+    _cachedGrid = lines;
+    _lastGridScale = selectedScale;
+    _lastGridCenter = LatLng(lat, lon);
+    _lastGridWidth = strokeWidth;
+    _lastGridOpacity = gridOpacity;
+
+    return PolylineLayer(polylines: _cachedGrid);
   }
 }
 
@@ -281,71 +391,6 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  List<Polyline> _buildGridLines(MapCamera camera) {
-    final lat = camera.center.latitude;
-    final zoom = camera.zoom;
-    final bounds = camera.visibleBounds;
-
-    final metersPerPixel = (math.cos(lat * math.pi / 180) * 2 * math.pi * 6378137) / (256 * math.pow(2, zoom));
-    
-    final List<double> scaleSteps = [
-      1, 2, 5, 10, 20, 50, 100, 200, 500, 
-      1000, 2000, 5000, 10000, 20000, 50000, 
-      100000, 200000, 500000, 1000000, 2000000, 5000000
-    ];
-    
-    const double targetPixels = 100.0;
-    final double distanceMeters = targetPixels * metersPerPixel;
-    
-    double selectedScale = scaleSteps.first;
-    for (var step in scaleSteps) {
-      if (distanceMeters >= step) {
-        selectedScale = step;
-      } else {
-        break;
-      }
-    }
-
-    const double metersPerLatDegree = 111319.9;
-    final double latStep = selectedScale / metersPerLatDegree;
-    final double lonStep = selectedScale / (metersPerLatDegree * math.cos(lat * math.pi / 180));
-
-    List<Polyline> lines = [];
-
-    if (latStep <= 0 || lonStep <= 0) return lines;
-
-    final double startLat = (bounds.south / latStep).floor() * latStep;
-    final double endLat = (bounds.north / latStep).ceil() * latStep;
-    final double startLon = (bounds.west / lonStep).floor() * lonStep;
-    final double endLon = (bounds.east / lonStep).ceil() * lonStep;
-
-    int latLinesCount = ((endLat - startLat) / latStep).abs().toInt();
-    int lonLinesCount = ((endLon - startLon) / lonStep).abs().toInt();
-    if (latLinesCount > 120 || lonLinesCount > 120) return lines;
-
-    // Чтение динамических настроек внешнего вида сетки
-    final double strokeWidth = AppSettings().gridWidth;
-    final Color gridColor = Colors.grey.withOpacity(AppSettings().gridOpacity);
-
-    for (double l = startLat; l <= endLat; l += latStep) {
-      lines.add(Polyline(
-        points: [LatLng(l, bounds.west), LatLng(l, bounds.east)],
-        strokeWidth: strokeWidth,
-        color: gridColor,
-      ));
-    }
-
-    for (double ln = startLon; ln <= endLon; ln += lonStep) {
-      lines.add(Polyline(
-        points: [LatLng(bounds.south, ln), LatLng(bounds.north, ln)],
-        strokeWidth: strokeWidth,
-        color: gridColor,
-      ));
-    }
-
-    return lines;
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -399,10 +444,9 @@ class _MapScreenState extends State<MapScreen> {
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.michroz2.naviga_operator',
               ),
+              // Вызов независимого слоя сетки. Он будет обновляться абсолютно синхронно с маркером масштаба
               if (_isMapReady && AppSettings().showGrid)
-                PolylineLayer(
-                  polylines: _buildGridLines(_mapController.camera),
-                ),
+                const MapGridLayer(),
               PolylineLayer(
                 polylines: nodes.map((node) {
                   final isMe = node.nodeId == myId;
