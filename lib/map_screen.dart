@@ -1,7 +1,7 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.36.4
- * Изменения: Добавлен автоматический вызов DrawingManager().load() в initState для восстановления тактической разметки при старте.
+ * Версия: 1.36.5
+ * Изменения: Внедрен интерфейс атрибутов (DrawingMenuSheet). Эскиз линии использует sticky attributes.
  * Описание: Главный экран-оркестратор интерактивной карты с поддержкой тактической разметки.
  */
 
@@ -28,6 +28,7 @@ import 'map_components/drawing_toolbar.dart';
 import 'map_components/drawing_manager.dart';
 import 'map_components/drawing_models.dart';
 import 'map_components/drawing_layer.dart';
+import 'map_components/drawing_menu_sheet.dart'; // ДОБАВЛЕНО
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -56,8 +57,6 @@ class _MapScreenState extends State<MapScreen> {
       WakelockPlus.enable();
     }
     AppSettings().addListener(_onSettingsChanged);
-
-    // Автоматическая загрузка сохраненной тактической разметки из JSON при старте
     DrawingManager().load();
   }
 
@@ -98,10 +97,8 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  void _handleDrawingTap(LatLng tappedPoint, MapCamera camera) {
+  Future<void> _handleDrawingTap(LatLng tappedPoint, MapCamera camera) async {
     final manager = DrawingManager();
-    
-    // Переводим 40 пикселей в физические метры на текущем зуме
     final metersPerPixel = (math.cos(tappedPoint.latitude * math.pi / 180) * 2 * math.pi * 6378137) / (256 * math.pow(2, camera.zoom));
     final searchRadiusMeters = 40.0 * metersPerPixel;
 
@@ -136,29 +133,88 @@ class _MapScreenState extends State<MapScreen> {
 
     if (closest != null) {
       if (_activeTool == DrawingTool.select) {
-        debugPrint('Выбран объект разметки: ${closest.id} (${closest.label})');
+        // Редактирование существующего объекта
+        final attrs = await showModalBottomSheet<Map<String, dynamic>>(
+          context: context,
+          isScrollControlled: true,
+          builder: (_) => DrawingMenuSheet(
+            existingElement: closest,
+            targetType: closest.type,
+          ),
+        );
+
+        if (attrs != null) {
+          if (closest is TacticalPoint) {
+            manager.updateElement(TacticalPoint(
+              id: closest.id, lat: closest.lat, lon: closest.lon,
+              label: attrs['label'], description: attrs['description'],
+              colorHex: attrs['colorHex'], iconKey: attrs['iconKey'],
+            ));
+          } else if (closest is TacticalLine) {
+            manager.updateElement(TacticalLine(
+              id: closest.id, path: closest.path,
+              label: attrs['label'], description: attrs['description'],
+              colorHex: attrs['colorHex'], width: attrs['lineWidth'],
+            ));
+          }
+        }
       } else if (_activeTool == DrawingTool.eraser) {
         manager.removeElement(closest.id);
-        debugPrint('Тактический объект удален: ${closest.id}');
       }
     } else {
       if (_activeTool == DrawingTool.point) {
-        final newId = DateTime.now().millisecondsSinceEpoch.toString();
-        final testPoint = TacticalPoint(
-          id: newId,
-          lat: tappedPoint.latitude,
-          lon: tappedPoint.longitude,
-          label: 'Точка ${newId.substring(newId.length - 4)}',
-          description: 'Создано оператором',
-          colorHex: '#FF0000',
-          iconKey: 'pin',
+        // Создание новой точки
+        final attrs = await showModalBottomSheet<Map<String, dynamic>>(
+          context: context,
+          isScrollControlled: true,
+          builder: (_) => const DrawingMenuSheet(targetType: TacticalType.point),
         );
-        manager.addElement(testPoint);
+
+        if (attrs != null) {
+          final newId = DateTime.now().millisecondsSinceEpoch.toString();
+          manager.addElement(TacticalPoint(
+            id: newId, lat: tappedPoint.latitude, lon: tappedPoint.longitude,
+            label: attrs['label'], description: attrs['description'],
+            colorHex: attrs['colorHex'], iconKey: attrs['iconKey'],
+          ));
+        }
       } else if (_activeTool == DrawingTool.line) {
         setState(() {
           _currentDrawingLinePath.add(tappedPoint);
         });
       }
+    }
+  }
+
+  // Обработка завершения рисования линии
+  Future<void> _processLineCompletion(DrawingTool newTool) async {
+    if (_currentDrawingLinePath.length > 1) {
+      if (newTool == DrawingTool.eraser) {
+        // Сброс без подтверждения (Eraser)
+        setState(() => _currentDrawingLinePath.clear());
+      } else {
+        // Запрос атрибутов
+        final attrs = await showModalBottomSheet<Map<String, dynamic>>(
+          context: context,
+          isScrollControlled: true,
+          builder: (_) => const DrawingMenuSheet(targetType: TacticalType.line),
+        );
+
+        if (attrs != null) {
+          final newId = DateTime.now().millisecondsSinceEpoch.toString();
+          DrawingManager().addElement(TacticalLine(
+            id: newId,
+            label: attrs['label'],
+            description: attrs['description'],
+            colorHex: attrs['colorHex'],
+            path: List.from(_currentDrawingLinePath),
+            width: attrs['lineWidth'],
+          ));
+        }
+        setState(() => _currentDrawingLinePath.clear());
+      }
+    } else {
+      setState(() => _currentDrawingLinePath.clear());
     }
   }
 
@@ -183,7 +239,8 @@ class _MapScreenState extends State<MapScreen> {
           _bleService.nodeDatabase,
           _bleService.identityNotifier,
           _bleService.sysConfigNotifier,
-          AppSettings(), 
+          AppSettings(),
+          DrawingManager(), // Слушаем изменения дефолтов для перерисовки эскиза
         ]),
         builder: (context, child) {
           final nodes = _bleService.nodeDatabase.nodes.values
@@ -248,13 +305,14 @@ class _MapScreenState extends State<MapScreen> {
 
               const MapDrawingLayer(),
 
+              // Эскиз линии с живыми атрибутами
               if (_currentDrawingLinePath.length > 1)
                 PolylineLayer(
                   polylines: [
                     Polyline(
                       points: _currentDrawingLinePath,
-                      strokeWidth: 4.0,
-                      color: Colors.blue.withOpacity(0.7),
+                      strokeWidth: DrawingManager().lastLineWidth,
+                      color: Color(int.parse(DrawingManager().lastLineColorHex.replaceFirst('#', '0xFF'))).withOpacity(0.7),
                     ),
                   ],
                 ),
@@ -369,24 +427,15 @@ class _MapScreenState extends State<MapScreen> {
                     child: DrawingToolbar(
                       activeTool: _activeTool,
                       onToolSelected: (tool) {
+                        final previousTool = _activeTool;
                         setState(() {
                           _activeTool = tool;
-                          
-                          if (tool != DrawingTool.line && _currentDrawingLinePath.isNotEmpty) {
-                            if (_currentDrawingLinePath.length > 1) {
-                              final newId = DateTime.now().millisecondsSinceEpoch.toString();
-                              DrawingManager().addElement(TacticalLine(
-                                id: newId,
-                                label: 'Линия ${newId.substring(newId.length - 4)}',
-                                description: 'Создано оператором',
-                                colorHex: '#0000FF',
-                                path: List.from(_currentDrawingLinePath),
-                                width: 4.0,
-                              ));
-                            }
-                            _currentDrawingLinePath.clear();
-                          }
                         });
+                        
+                        // Логика обработки завершения линии
+                        if (previousTool == DrawingTool.line && tool != DrawingTool.line) {
+                          _processLineCompletion(tool);
+                        }
                       },
                     ),
                   ),
