@@ -1,12 +1,13 @@
 /*
  * Файл: drawing_storage.dart
- * Версия: 1.36.0
+ * Версия: 1.36.2
  * Описание: Файловый менеджер для сохранения и загрузки тактической разметки в формате JSON.
  */
 
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import 'package:latlong2/latlong.dart'; // ДОБАВЛЕНО: Критический импорт
 import 'drawing_models.dart';
 
 class DrawingStorage {

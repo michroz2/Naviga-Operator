@@ -1,8 +1,8 @@
 /*
  * Файл: drawing_models.dart
- * Версия: 1.36.0
+ * Версия: 1.36.3
  * Описание: Модель данных для тактической разметки. 
- * iconKey сохраняется в JSON для обеспечения переносимости между операторами.
+ * Исправление: Перевод базового класса на именованные параметры для совместимости с конструкторами Dart 2.17+.
  */
 
 import 'package:latlong2/latlong.dart';
@@ -16,7 +16,14 @@ abstract class TacticalElement {
   final String description;
   final String colorHex;
 
-  TacticalElement(this.id, this.type, this.label, this.description, this.colorHex);
+  // Используем именованные параметры
+  TacticalElement({
+    required this.id,
+    required this.type,
+    required this.label,
+    required this.description,
+    required this.colorHex,
+  });
 
   Map<String, dynamic> toJson();
 }
@@ -24,7 +31,7 @@ abstract class TacticalElement {
 class TacticalPoint extends TacticalElement {
   final double lat;
   final double lon;
-  final String iconKey; // Идентификатор иконки для передачи другим операторам
+  final String iconKey;
 
   TacticalPoint({
     required super.id,
@@ -34,7 +41,7 @@ class TacticalPoint extends TacticalElement {
     required super.description,
     required super.colorHex,
     required this.iconKey,
-  }) : super(TacticalType.point);
+  }) : super(type: TacticalType.point);
 
   @override
   Map<String, dynamic> toJson() => {
@@ -60,7 +67,7 @@ class TacticalLine extends TacticalElement {
     required super.colorHex,
     required this.path,
     required this.width,
-  }) : super(TacticalType.line);
+  }) : super(type: TacticalType.line);
 
   @override
   Map<String, dynamic> toJson() => {

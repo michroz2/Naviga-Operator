@@ -1,7 +1,8 @@
 /*
  * Файл: tactical_icon_manager.dart
- * Версия: 1.36.0
+ * Версия: 1.36.3
  * Описание: Оптимизированный справочник тактических иконок для Outdoors/Hunting.
+ * Исправление: Замена Icons.bridge на валидный Icons.alt_route.
  */
 
 import 'package:flutter/material.dart';
@@ -34,7 +35,7 @@ class TacticalIconManager {
     
     // Инфраструктура
     TacticalIcon('tower', Icons.cell_tower, 'Вышка'),
-    TacticalIcon('bridge', Icons.bridge, 'Переправа'),
+    TacticalIcon('bridge', Icons.alt_route, 'Переправа'), // Исправлено здесь
     TacticalIcon('home', Icons.home, 'База'),
     TacticalIcon('hospital', Icons.local_hospital, 'Медпункт'),
   ];

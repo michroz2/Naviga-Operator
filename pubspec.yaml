@@ -50,6 +50,7 @@ dependencies:
   shared_preferences: ^2.2.2 
   wakelock_plus: ^1.2.8 
   flutter_compass: ^0.8.0 # ИЗМЕНЕНИЕ 1.33.3: Пакет для интерактивного компаса
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:
