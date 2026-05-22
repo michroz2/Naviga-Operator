@@ -1,7 +1,7 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.34.3
- * Изменения: UC-23, Шаг 5. Добавлен слой координатной сетки с защитой от LateInitializationError через проверку флага _isMapReady. Шаг сетки привязан к масштабу местности. Графическая полоса масштабной линейки скрывается при включенной сетке.
+ * Версия: 1.34.4
+ * Изменения: UC-23, Шаг 6. Добавлена интерактивность для масштабной линейки. Компонент MapScaleBar обернут в GestureDetector для циклического переключения видимости координатной сетки по тапу.
  * Описание: Экран визуализации узлов на интерактивной карте.
  */
 
@@ -114,38 +114,45 @@ class MapScaleBar extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.only(left: 16.0, bottom: 24.0),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.8),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
-          ),
-          if (!showGrid) ...[
-            const SizedBox(height: 2),
+      child: GestureDetector(
+        onTap: () {
+          // Переключение режима отображения сетки по тапу на маркер масштаба
+          AppSettings().setShowGrid(!showGrid);
+        },
+        behavior: HitTestBehavior.opaque,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Container(
-              width: scaleWidth,
-              height: 4,
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               decoration: BoxDecoration(
-                color: Colors.black87,
-                border: Border.all(color: Colors.white, width: 1),
-                borderRadius: BorderRadius.circular(2),
+                color: Colors.white.withOpacity(0.8),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
               ),
             ),
+            if (!showGrid) ...[
+              const SizedBox(height: 2),
+              Container(
+                width: scaleWidth,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.black87,
+                  border: Border.all(color: Colors.white, width: 1),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
