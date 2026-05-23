@@ -1,19 +1,29 @@
 /*
  * Файл: main_menu_screen.dart
- * Версия: 1.32.10
- * Изменения: Хотфикс UI. Фон карточки "Карта" в активном состоянии сброшен на системный (null) для полного визуального единства с остальными пунктами меню.
+ * Версия: 1.37.0
  * Описание: Главный дашборд управления Донглом.
+ * Изменения: Интегрирован UC-25 (Экспорт/Импорт кастомной картографии).
  */
 
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+// НОВЫЕ ПАКЕТЫ ДЛЯ ИМПОРТА/ЭКСПОРТА (UC-25)
+import 'package:share_plus/share_plus.dart';
+import 'package:file_picker/file_picker.dart';
+
 import 'app_config.dart';
 import 'ble_protocol.dart';
 import 'ble_service.dart';
 import 'roster_screen.dart';
 import 'map_screen.dart';
 import 'settings_screen.dart';
+
+// НОВЫЕ ИМПОРТЫ ЛОГИКИ КАРТОГРАФИИ
+import 'map_components/drawing_manager.dart';
+import 'map_components/drawing_storage.dart';
+import 'map_components/drawing_models.dart';
 
 class MainMenuScreen extends StatefulWidget {
   const MainMenuScreen({super.key});
@@ -29,6 +39,8 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   void initState() {
     super.initState();
     _bleService.isConnected.addListener(_connectionListener);
+    // Предзагружаем базу рисунков на случай если пользователь нажмет Экспорт до открытия Карты
+    DrawingManager().load();
   }
 
   @override
@@ -50,6 +62,132 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
       case 2: return 'Трекер (Tracker)';
       default: return 'Неизвестно ($roleCode)';
     }
+  }
+
+  // ============================================================================
+  // ЛОГИКА ЭКСПОРТА (UC-25)
+  // ============================================================================
+  Future<void> _exportMarkup() async {
+    final manager = DrawingManager();
+    if (manager.elements.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ваша тактическая карта пуста. Нечего отправлять.')),
+      );
+      return;
+    }
+
+    try {
+      final file = await DrawingStorage().prepareExportFile(manager.elements);
+      // ИЗМЕНЕНИЕ: Добавлен mimeType 'application/json' для корректной маршрутизации в WhatsApp/Viber
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'application/json')], 
+        text: 'Тактическая разметка Naviga (Импортируйте этот файл в приложение)',
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка экспорта: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  // ============================================================================
+  // ЛОГИКА ИМПОРТА (UC-25)
+  // ============================================================================
+  Future<void> _importMarkup() async {
+    try {
+      // Открываем файловый менеджер (Разрешаем любые файлы)
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final path = result.files.single.path!;
+        
+        final importedElements = await DrawingStorage().parseImportFile(path);
+        
+        if (importedElements.isEmpty) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Файл пуст или имеет неверный формат.'), backgroundColor: Colors.red),
+          );
+          return;
+        }
+
+        if (!mounted) return;
+        _showMergeDialog(importedElements);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка импорта: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  void _showMergeDialog(List<TacticalElement> importedElements) {
+    int points = importedElements.whereType<TacticalPoint>().length;
+    int lines = importedElements.whereType<TacticalLine>().length;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext ctx) {
+        return AlertDialog(
+          title: const Text('Получена Разметка'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Найдено объектов:\nТочек: $points\nЛиний: $lines', style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              const Text('Как вы хотите применить эти данные к вашей текущей карте?'),
+            ],
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actionsOverflowAlignment: OverflowBarAlignment.center,
+          actionsOverflowDirection: VerticalDirection.down,
+          actions: [
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  DrawingManager().importElements(importedElements, replace: true);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Разметка успешно ЗАМЕНЕНА')));
+                },
+                icon: const Icon(Icons.warning_amber_rounded),
+                label: const Text('ЗАМЕНИТЬ (Мои данные удалятся)'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.errorContainer, 
+                  foregroundColor: Theme.of(context).colorScheme.onErrorContainer
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  DrawingManager().importElements(importedElements, replace: false);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Разметка успешно ДОБАВЛЕНА')));
+                },
+                icon: const Icon(Icons.library_add),
+                label: const Text('ДОБАВИТЬ (Склеить с моими)'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.primaryContainer, 
+                  foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('ОТМЕНА', style: TextStyle(color: Colors.grey)),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -135,7 +273,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
 
                   return Card(
                     elevation: hasValidGps ? 4 : 1,
-                    // ИЗМЕНЕНИЕ 1.32.10: Сброс цвета на системный (null) для активного состояния
                     color: hasValidGps ? null : colorScheme.surfaceVariant,
                     child: InkWell(
                       onTap: hasValidGps ? () {
@@ -159,7 +296,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                                     style: TextStyle(
                                       fontSize: 18, 
                                       fontWeight: FontWeight.bold,
-                                      // ИЗМЕНЕНИЕ 1.32.10: Сброс цвета текста на дефолтный (null)
                                       color: hasValidGps ? null : colorScheme.onSurfaceVariant
                                     )),
                                   Text(hasValidGps ? 'Визуализация узлов' : 'Ожидание геоданных из сети...', 
@@ -179,7 +315,60 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                 },
               ),
               const SizedBox(height: 10),
-              
+
+              // --- БЛОК ЭКСПОРТА/ИМПОРТА КАРТОГРАФИИ (НОВОЕ UC-25) ---
+              Card(
+                elevation: 4,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.import_export, color: Colors.blueGrey, size: 32),
+                          SizedBox(width: 16),
+                          Expanded(
+                            child: Text('Обмен Разметкой', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: _exportMarkup,
+                              icon: const Icon(Icons.send),
+                              label: const Text('Послать'),
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                backgroundColor: colorScheme.secondaryContainer,
+                                foregroundColor: colorScheme.onSecondaryContainer,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: _importMarkup,
+                              icon: const Icon(Icons.download),
+                              label: const Text('Загрузить'),
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                backgroundColor: colorScheme.primaryContainer,
+                                foregroundColor: colorScheme.onPrimaryContainer,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+
               // --- БЛОК ТЕЛЕМЕТРИИ С ПОДДЕРЖКОЙ ANCHOR ---
               ValueListenableBuilder<BleEvtMyStatus?>(
                 valueListenable: _bleService.myStatusNotifier,

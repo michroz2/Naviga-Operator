@@ -51,7 +51,9 @@ dependencies:
   wakelock_plus: ^1.2.8 
   flutter_compass: ^0.8.0 # ИЗМЕНЕНИЕ 1.33.3: Пакет для интерактивного компаса
   path_provider: ^2.1.5
-
+  share_plus: ^12.0.2
+  file_picker: ^8.1.2
+  
 dev_dependencies:
   flutter_test:
     sdk: flutter

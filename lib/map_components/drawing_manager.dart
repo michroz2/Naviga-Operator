@@ -1,8 +1,8 @@
 /*
  * Файл: drawing_manager.dart
- * Версия: 1.36.13
+ * Версия: 1.37.0
  * Описание: Менеджер состояния для тактической разметки.
- * Изменения: Интегрирован SharedPreferences для сохранения пользовательской сортировки иконок (MRU).
+ * Изменения: Добавлен метод importElements с логикой ЗАМЕНИТЬ (Replace) и ДОБАВИТЬ (Append).
  */
 
 import 'package:flutter/material.dart';
@@ -19,7 +19,6 @@ class DrawingManager extends ChangeNotifier {
   final DrawingStorage _storage = DrawingStorage();
   List<TacticalElement> _elements = [];
 
-  // Список ключей иконок в порядке последнего использования (MRU)
   List<String> _mruIconKeys = [];
 
   List<TacticalElement> get elements => List.unmodifiable(_elements);
@@ -31,44 +30,65 @@ class DrawingManager extends ChangeNotifier {
   double lastLineWidth = 4.0;
 
   Future<void> load() async {
-    // Загрузка объектов карты
     _elements = await _storage.loadTacticalData();
     
-    // Загрузка пользовательской сортировки иконок из памяти устройства
     final prefs = await SharedPreferences.getInstance();
     _mruIconKeys = prefs.getStringList('mru_icon_keys') ?? [];
     
     notifyListeners();
   }
 
-  // Метод для продвижения иконки на первое место
+  // ============================================================================
+  // ЛОГИКА ИМПОРТА (UC-25)
+  // ============================================================================
+  void importElements(List<TacticalElement> importedElements, {required bool replace}) {
+    if (replace) {
+      // Жесткая замена
+      _elements = List.from(importedElements);
+    } else {
+      // Мягкое добавление с перегенерацией ID для избежания конфликтов
+      final uniquePrefix = DateTime.now().microsecondsSinceEpoch.toString();
+      
+      for (var el in importedElements) {
+        final newId = '${uniquePrefix}_${el.id}';
+        
+        if (el is TacticalPoint) {
+          _elements.add(TacticalPoint(
+            id: newId, lat: el.lat, lon: el.lon, 
+            label: el.label, description: el.description, 
+            colorHex: el.colorHex, iconKey: el.iconKey
+          ));
+        } else if (el is TacticalLine) {
+          _elements.add(TacticalLine(
+            id: newId, label: el.label, description: el.description, 
+            colorHex: el.colorHex, path: List.from(el.path), width: el.width
+          ));
+        }
+      }
+    }
+    _save();
+  }
+
   Future<void> promoteIcon(String iconKey) async {
     _mruIconKeys.remove(iconKey);
     _mruIconKeys.insert(0, iconKey);
     
-    // Сохраняем обновленный порядок
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('mru_icon_keys', _mruIconKeys);
   }
 
-  // Динамически отсортированный список иконок для UI
   List<TacticalIcon> get sortedIcons {
     List<TacticalIcon> result = [];
-    
-    // Сначала добавляем те, что использовались недавно
     for (String key in _mruIconKeys) {
       try {
         result.add(TacticalIconManager.availableIcons.firstWhere((i) => i.key == key));
-      } catch (_) {} // Игнорируем, если иконка была удалена из словаря в новых версиях
+      } catch (_) {} 
     }
-    
-    // Затем добавляем все остальные
     for (var icon in TacticalIconManager.availableIcons) {
       if (!_mruIconKeys.contains(icon.key)) {
         result.add(icon);
       }
     }
-    
     return result;
   }
 
