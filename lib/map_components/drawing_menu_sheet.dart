@@ -1,15 +1,13 @@
 /*
  * Файл: drawing_menu_sheet.dart
- * Версия: 1.36.9
+ * Версия: 1.36.13
  * Описание: Всплывающее окно (BottomSheet) для настройки атрибутов тактических объектов.
- * Изменения: Косметическое выравнивание сетки иконок под сетку палитры цветов (6 колонок, плотные отступы) 
- * и приведение высоты поля описания к высоте поля названия (maxLines: 1).
+ * Изменения: Подключение динамической сортировки иконок (MRU). Жесткий ограничитель высоты убран.
  */
 
 import 'package:flutter/material.dart';
 import 'drawing_models.dart';
 import 'drawing_manager.dart';
-import 'tactical_icon_manager.dart';
 
 class DrawingMenuSheet extends StatefulWidget {
   final TacticalElement? existingElement;
@@ -95,6 +93,11 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
       _labelController.text = widget.targetType == TacticalType.point ? 'Точка' : 'Линия';
     }
 
+    // Фиксируем использование иконки (MRU)
+    if (widget.targetType == TacticalType.point) {
+      DrawingManager().promoteIcon(_currentIconKey);
+    }
+
     Navigator.of(context).pop({
       'label': _labelController.text.trim(),
       'description': _descController.text.trim(),
@@ -108,6 +111,9 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
   Widget build(BuildContext context) {
     final isPoint = widget.targetType == TacticalType.point;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    
+    // Запрашиваем отсортированный список иконок
+    final sortedIcons = DrawingManager().sortedIcons;
 
     return Padding(
       padding: EdgeInsets.only(
@@ -144,7 +150,7 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
                 border: OutlineInputBorder(),
                 isDense: true,
               ),
-              maxLines: 1, // ИЗМЕНЕНО: Однострочный режим для выравнивания высоты
+              maxLines: 1,
             ),
             const SizedBox(height: 16),
             
@@ -176,32 +182,30 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
               const SizedBox(height: 16),
               const Text('Иконка:', style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              SizedBox(
-                height: 96, // ИЗМЕНЕНО: Компактная высота контейнера под новую плотную сетку
-                child: GridView.builder(
-                  shrinkWrap: true,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 6, // ИЗМЕНЕНО: 6 колонок для синхронизации с палитрой цветов
-                    crossAxisSpacing: 14, // ИЗМЕНЕНО: Плотные горизонтальные интервалы
-                    mainAxisSpacing: 10,  // ИЗМЕНЕНО: Плотные вертикальные интервалы
-                  ),
-                  itemCount: TacticalIconManager.availableIcons.length,
-                  itemBuilder: (context, index) {
-                    final iconItem = TacticalIconManager.availableIcons[index];
-                    final isSelected = _currentIconKey == iconItem.key;
-                    return GestureDetector(
-                      onTap: () => setState(() => _currentIconKey = iconItem.key),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: isSelected ? Colors.blue.shade100 : Colors.transparent,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: isSelected ? Colors.blue : Colors.transparent),
-                        ),
-                        child: Icon(iconItem.data, color: isSelected ? Colors.blue : Colors.black87),
-                      ),
-                    );
-                  },
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(), // Защита скролла
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 6, 
+                  crossAxisSpacing: 14, 
+                  mainAxisSpacing: 10,  
                 ),
+                itemCount: sortedIcons.length,
+                itemBuilder: (context, index) {
+                  final iconItem = sortedIcons[index];
+                  final isSelected = _currentIconKey == iconItem.key;
+                  return GestureDetector(
+                    onTap: () => setState(() => _currentIconKey = iconItem.key),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: isSelected ? Colors.blue.shade100 : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: isSelected ? Colors.blue : Colors.transparent),
+                      ),
+                      child: Icon(iconItem.data, color: isSelected ? Colors.blue : Colors.black87),
+                    ),
+                  );
+                },
               ),
             ],
 

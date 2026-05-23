@@ -1,13 +1,15 @@
 /*
  * Файл: drawing_manager.dart
- * Версия: 1.36.7
+ * Версия: 1.36.13
  * Описание: Менеджер состояния для тактической разметки.
- * Изменения: Добавлен динамический расчет порядкового номера для новых объектов (Точка-N, Линия-N).
+ * Изменения: Интегрирован SharedPreferences для сохранения пользовательской сортировки иконок (MRU).
  */
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'drawing_models.dart';
 import 'drawing_storage.dart';
+import 'tactical_icon_manager.dart';
 
 class DrawingManager extends ChangeNotifier {
   static final DrawingManager _instance = DrawingManager._internal();
@@ -16,6 +18,9 @@ class DrawingManager extends ChangeNotifier {
 
   final DrawingStorage _storage = DrawingStorage();
   List<TacticalElement> _elements = [];
+
+  // Список ключей иконок в порядке последнего использования (MRU)
+  List<String> _mruIconKeys = [];
 
   List<TacticalElement> get elements => List.unmodifiable(_elements);
 
@@ -26,17 +31,52 @@ class DrawingManager extends ChangeNotifier {
   double lastLineWidth = 4.0;
 
   Future<void> load() async {
+    // Загрузка объектов карты
     _elements = await _storage.loadTacticalData();
+    
+    // Загрузка пользовательской сортировки иконок из памяти устройства
+    final prefs = await SharedPreferences.getInstance();
+    _mruIconKeys = prefs.getStringList('mru_icon_keys') ?? [];
+    
     notifyListeners();
   }
 
-  // Получить следующий порядковый номер для точки
+  // Метод для продвижения иконки на первое место
+  Future<void> promoteIcon(String iconKey) async {
+    _mruIconKeys.remove(iconKey);
+    _mruIconKeys.insert(0, iconKey);
+    
+    // Сохраняем обновленный порядок
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('mru_icon_keys', _mruIconKeys);
+  }
+
+  // Динамически отсортированный список иконок для UI
+  List<TacticalIcon> get sortedIcons {
+    List<TacticalIcon> result = [];
+    
+    // Сначала добавляем те, что использовались недавно
+    for (String key in _mruIconKeys) {
+      try {
+        result.add(TacticalIconManager.availableIcons.firstWhere((i) => i.key == key));
+      } catch (_) {} // Игнорируем, если иконка была удалена из словаря в новых версиях
+    }
+    
+    // Затем добавляем все остальные
+    for (var icon in TacticalIconManager.availableIcons) {
+      if (!_mruIconKeys.contains(icon.key)) {
+        result.add(icon);
+      }
+    }
+    
+    return result;
+  }
+
   int getNextPointNumber() {
     final count = _elements.whereType<TacticalPoint>().length;
     return count + 1;
   }
 
-  // Получить следующий порядковый номер для линии
   int getNextLineNumber() {
     final count = _elements.whereType<TacticalLine>().length;
     return count + 1;

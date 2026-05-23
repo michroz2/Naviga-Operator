@@ -1,8 +1,8 @@
 /*
  * Файл: tactical_icon_manager.dart
- * Версия: 1.36.3
+ * Версия: 1.36.13
  * Описание: Оптимизированный справочник тактических иконок для Outdoors/Hunting.
- * Исправление: Замена Icons.bridge на валидный Icons.alt_route.
+ * Изменения: Расширение словаря до 24 элементов (добавлены иконки рельефа, маршрутов и инфраструктуры).
  */
 
 import 'package:flutter/material.dart';
@@ -35,9 +35,25 @@ class TacticalIconManager {
     
     // Инфраструктура
     TacticalIcon('tower', Icons.cell_tower, 'Вышка'),
-    TacticalIcon('bridge', Icons.alt_route, 'Переправа'), // Исправлено здесь
+    TacticalIcon('bridge', Icons.alt_route, 'Переправа'),
     TacticalIcon('home', Icons.home, 'База'),
     TacticalIcon('hospital', Icons.local_hospital, 'Медпункт'),
+
+    // НОВЫЕ: Природа и Рельеф
+    TacticalIcon('terrain', Icons.terrain, 'Высота'),
+    TacticalIcon('park', Icons.park, 'Заросли'),
+    
+    // НОВЫЕ: Маршруты и Транспорт
+    TacticalIcon('walk', Icons.directions_walk, 'Тропа'),
+    TacticalIcon('car', Icons.directions_car, 'Парковка'),
+    TacticalIcon('boat', Icons.directions_boat, 'Причал'),
+    
+    // НОВЫЕ: Outdoor & Разное
+    TacticalIcon('backpack', Icons.backpack, 'Тайник'),
+    TacticalIcon('visibility', Icons.visibility, 'Обзор'),
+    TacticalIcon('group', Icons.group, 'Сбор'),
+    TacticalIcon('dining', Icons.local_dining, 'Привал'),
+    TacticalIcon('camera', Icons.camera_alt, 'Снимок'),
   ];
 
   static IconData getIconData(String key) {
