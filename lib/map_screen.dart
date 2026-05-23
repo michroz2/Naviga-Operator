@@ -1,8 +1,8 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.36.5
- * Изменения: Внедрен интерфейс атрибутов (DrawingMenuSheet). Эскиз линии использует sticky attributes.
+ * Версия: 1.36.14
  * Описание: Главный экран-оркестратор интерактивной карты с поддержкой тактической разметки.
+ * Изменения: Внедрен вызов Read-Only окна информации (DrawingInfoSheet) при тапе по объекту в режиме View.
  */
 
 import 'dart:async';
@@ -28,7 +28,7 @@ import 'map_components/drawing_toolbar.dart';
 import 'map_components/drawing_manager.dart';
 import 'map_components/drawing_models.dart';
 import 'map_components/drawing_layer.dart';
-import 'map_components/drawing_menu_sheet.dart'; // ДОБАВЛЕНО
+import 'map_components/drawing_menu_sheet.dart'; 
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -132,7 +132,17 @@ class _MapScreenState extends State<MapScreen> {
     TacticalElement? closest = closestPoint ?? closestLine;
 
     if (closest != null) {
-      if (_activeTool == DrawingTool.select) {
+      // ИЗМЕНЕНИЕ: Внедрен вызов информационного окна для режима просмотра
+      if (_activeTool == DrawingTool.view) {
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          builder: (_) => DrawingInfoSheet(element: closest),
+        );
+      } else if (_activeTool == DrawingTool.select) {
         // Редактирование существующего объекта
         final attrs = await showModalBottomSheet<Map<String, dynamic>>(
           context: context,
@@ -162,8 +172,8 @@ class _MapScreenState extends State<MapScreen> {
         manager.removeElement(closest.id);
       }
     } else {
+      // Если клик в пустоту
       if (_activeTool == DrawingTool.point) {
-        // Создание новой точки
         final attrs = await showModalBottomSheet<Map<String, dynamic>>(
           context: context,
           isScrollControlled: true,
@@ -240,7 +250,7 @@ class _MapScreenState extends State<MapScreen> {
           _bleService.identityNotifier,
           _bleService.sysConfigNotifier,
           AppSettings(),
-          DrawingManager(), // Слушаем изменения дефолтов для перерисовки эскиза
+          DrawingManager(), 
         ]),
         builder: (context, child) {
           final nodes = _bleService.nodeDatabase.nodes.values
@@ -271,7 +281,8 @@ class _MapScreenState extends State<MapScreen> {
                 flags: interactiveFlags,
               ),
               onTap: (tapPosition, latLng) {
-                if (_activeTool == DrawingTool.view) return;
+                // ИЗМЕНЕНИЕ: Убран жесткий блокиратор "return" для _activeTool == DrawingTool.view
+                // Логика просмотра перенесена внутрь _handleDrawingTap
                 _handleDrawingTap(latLng, _mapController.camera);
               },
               onMapReady: () {
@@ -402,12 +413,12 @@ class _MapScreenState extends State<MapScreen> {
                                 ),
                               ),
                             ],
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                }).toList(),
-              ),
+                    );
+                  }).toList(),
+                ),
               ),
               
               const Align(

@@ -1,7 +1,8 @@
 /*
  * Файл: drawing_toolbar.dart
- * Версия: 1.36.6
+ * Версия: 1.36.15
  * Описание: Компактная анимированная горизонтальная панель инструментов (Pill-shaped Toolbar).
+ * Изменения: Полный переход на тему оформления (colorScheme) для поддержки корректного отображения в тёмной теме.
  */
 
 import 'package:flutter/material.dart';
@@ -21,56 +22,57 @@ class DrawingToolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isExpanded = activeTool != DrawingTool.view;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeInOut,
-      height: 48.0, // Фиксированная компактная высота
+      height: 48.0,
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface.withOpacity(0.95),
-        borderRadius: BorderRadius.circular(24.0), // Форма "таблетки"
-        boxShadow: const [
+        color: colorScheme.surface.withOpacity(0.95),
+        borderRadius: BorderRadius.circular(24.0),
+        boxShadow: [
           BoxShadow(
-            color: Colors.black26, 
+            color: colorScheme.brightness == Brightness.dark ? Colors.black45 : Colors.black26, 
             blurRadius: 6, 
-            offset: Offset(0, 2),
+            offset: const Offset(0, 2),
           )
         ],
       ),
-      // Если свернуто - показываем только кнопку Edit, если развернуто - ряд инструментов
-      child: isExpanded ? _buildExpandedToolbar(context) : _buildCollapsedButton(),
+      child: isExpanded ? _buildExpandedToolbar(context) : _buildCollapsedButton(context),
     );
   }
 
-  // Свернутое состояние (только одна кнопка)
-  Widget _buildCollapsedButton() {
+  // Свернутое состояние (кнопка Edit) с учётом темы
+  Widget _buildCollapsedButton(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return IconButton(
-      icon: const Icon(Icons.edit, color: Colors.black87),
+      icon: Icon(Icons.edit, color: colorScheme.onSurface),
       onPressed: () => onToolSelected(DrawingTool.select),
       tooltip: 'Режим редактирования',
     );
   }
 
-  // Развернутое состояние (горизонтальный ряд кнопок)
+  // Развернутое состояние с динамическими цветами темы
   Widget _buildExpandedToolbar(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Row(
-      mainAxisSize: MainAxisSize.min, // Занимает только необходимую ширину
+      mainAxisSize: MainAxisSize.min,
       children: [
-        const SizedBox(width: 4), // Небольшой отступ от края
-        _buildToolBtn(DrawingTool.select, Icons.near_me, 'Выбор'),
-        _buildToolBtn(DrawingTool.point, Icons.location_on, 'Точка'),
-        _buildToolBtn(DrawingTool.line, Icons.timeline, 'Линия'),
-        _buildToolBtn(DrawingTool.eraser, Icons.auto_delete, 'Удалить'),
+        const SizedBox(width: 4),
+        _buildToolBtn(context, DrawingTool.select, Icons.near_me, 'Выбор'),
+        _buildToolBtn(context, DrawingTool.point, Icons.location_on, 'Точка'),
+        _buildToolBtn(context, DrawingTool.line, Icons.timeline, 'Линия'),
+        _buildToolBtn(context, DrawingTool.eraser, Icons.auto_delete, 'Удалить'),
         
-        // Вертикальный разделитель
+        // Вертикальный разделитель адаптивного цвета
         Container(
           height: 24,
           width: 1,
           margin: const EdgeInsets.symmetric(horizontal: 4),
-          color: Colors.grey.shade400,
+          color: colorScheme.outlineVariant,
         ),
         
-        // Кнопка закрытия
         IconButton(
           icon: const Icon(Icons.close, color: Colors.red),
           onPressed: () => onToolSelected(DrawingTool.view),
@@ -81,16 +83,16 @@ class DrawingToolbar extends StatelessWidget {
     );
   }
 
-  Widget _buildToolBtn(DrawingTool tool, IconData icon, String tooltip) {
+  Widget _buildToolBtn(BuildContext context, DrawingTool tool, IconData icon, String tooltip) {
     final isSelected = activeTool == tool;
+    final colorScheme = Theme.of(context).colorScheme;
     return IconButton(
       icon: Icon(
         icon, 
-        color: isSelected ? Colors.blue : Colors.black87,
+        color: isSelected ? colorScheme.primary : colorScheme.onSurface,
       ),
       onPressed: () => onToolSelected(tool),
       tooltip: tooltip,
-      // Делаем кнопки чуть компактнее
       padding: const EdgeInsets.all(8),
       constraints: const BoxConstraints(),
     );
