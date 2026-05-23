@@ -1,8 +1,8 @@
 /*
  * Файл: drawing_manager.dart
- * Версия: 1.36.5
+ * Версия: 1.36.7
  * Описание: Менеджер состояния для тактической разметки.
- * Изменения: Добавлена память последних использованных атрибутов (Sticky Attributes) и метод updateElement.
+ * Изменения: Добавлен динамический расчет порядкового номера для новых объектов (Точка-N, Линия-N).
  */
 
 import 'package:flutter/material.dart';
@@ -19,27 +19,35 @@ class DrawingManager extends ChangeNotifier {
 
   List<TacticalElement> get elements => List.unmodifiable(_elements);
 
-  // Память последних атрибутов (дефолты для новых объектов)
   String lastPointIconKey = 'pin';
   String lastPointColorHex = '#FF0000';
   
   String lastLineColorHex = '#0000FF';
   double lastLineWidth = 4.0;
 
-  // Инициализация
   Future<void> load() async {
     _elements = await _storage.loadTacticalData();
     notifyListeners();
   }
 
-  // Добавление и синхронизация
+  // Получить следующий порядковый номер для точки
+  int getNextPointNumber() {
+    final count = _elements.whereType<TacticalPoint>().length;
+    return count + 1;
+  }
+
+  // Получить следующий порядковый номер для линии
+  int getNextLineNumber() {
+    final count = _elements.whereType<TacticalLine>().length;
+    return count + 1;
+  }
+
   void addElement(TacticalElement element) {
     _elements.add(element);
     _updateDefaults(element);
     _save();
   }
 
-  // Обновление существующего элемента
   void updateElement(TacticalElement updatedElement) {
     final index = _elements.indexWhere((e) => e.id == updatedElement.id);
     if (index != -1) {
@@ -49,13 +57,11 @@ class DrawingManager extends ChangeNotifier {
     }
   }
 
-  // Удаление и синхронизация
   void removeElement(String id) {
     _elements.removeWhere((e) => e.id == id);
     _save();
   }
 
-  // Автоматическое запоминание атрибутов для следующего объекта
   void _updateDefaults(TacticalElement element) {
     if (element is TacticalPoint) {
       lastPointIconKey = element.iconKey;

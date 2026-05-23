@@ -1,7 +1,9 @@
 /*
  * Файл: drawing_menu_sheet.dart
- * Версия: 1.36.5
+ * Версия: 1.36.9
  * Описание: Всплывающее окно (BottomSheet) для настройки атрибутов тактических объектов.
+ * Изменения: Косметическое выравнивание сетки иконок под сетку палитры цветов (6 колонок, плотные отступы) 
+ * и приведение высоты поля описания к высоте поля названия (maxLines: 1).
  */
 
 import 'package:flutter/material.dart';
@@ -10,8 +12,8 @@ import 'drawing_manager.dart';
 import 'tactical_icon_manager.dart';
 
 class DrawingMenuSheet extends StatefulWidget {
-  final TacticalElement? existingElement; // Если null - создание нового
-  final TacticalType targetType;          // Тип создаваемого объекта
+  final TacticalElement? existingElement;
+  final TacticalType targetType;
 
   const DrawingMenuSheet({
     super.key,
@@ -32,23 +34,33 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
   late double _currentLineWidth;
 
   final List<String> _palette = [
-    '#FF0000', // Красный (Враг/Опасность)
-    '#0000FF', // Синий (Свои/Маршрут)
-    '#008000', // Зеленый (Безопасно/Лагерь)
-    '#FFA500', // Оранжевый (Внимание)
-    '#000000', // Черный (Нейтральный)
-    '#FFFFFF', // Белый
+    '#FF0000', '#0000FF', '#008000', '#FFA500', '#000000', '#FFFFFF'
   ];
 
   @override
   void initState() {
     super.initState();
     final manager = DrawingManager();
-
-    // Заполнение из существующего объекта ИЛИ из памяти (Sticky attributes)
     final el = widget.existingElement;
-    _labelController = TextEditingController(text: el?.label ?? '');
+
+    String defaultLabel = '';
+    if (el == null) {
+      if (widget.targetType == TacticalType.point) {
+        defaultLabel = 'Точка-${manager.getNextPointNumber()}';
+      } else {
+        defaultLabel = 'Линия-${manager.getNextLineNumber()}';
+      }
+    }
+
+    _labelController = TextEditingController(text: el?.label ?? defaultLabel);
     _descController = TextEditingController(text: el?.description ?? '');
+
+    if (el == null) {
+      _labelController.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _labelController.text.length,
+      );
+    }
 
     if (widget.targetType == TacticalType.point) {
       if (el is TacticalPoint) {
@@ -58,7 +70,7 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
         _currentColorHex = manager.lastPointColorHex;
         _currentIconKey = manager.lastPointIconKey;
       }
-      _currentLineWidth = 4.0; // Игнорируется для точек
+      _currentLineWidth = 4.0;
     } else {
       if (el is TacticalLine) {
         _currentColorHex = el.colorHex;
@@ -67,7 +79,7 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
         _currentColorHex = manager.lastLineColorHex;
         _currentLineWidth = manager.lastLineWidth;
       }
-      _currentIconKey = 'pin'; // Игнорируется для линий
+      _currentIconKey = 'pin';
     }
   }
 
@@ -95,132 +107,132 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
   @override
   Widget build(BuildContext context) {
     final isPoint = widget.targetType == TacticalType.point;
-    
-    // Добавляем отступ для клавиатуры
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Padding(
       padding: EdgeInsets.only(
         left: 16.0, right: 16.0, top: 16.0, bottom: bottomInset + 16.0,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            widget.existingElement == null 
-                ? (isPoint ? 'Новая точка' : 'Новая линия') 
-                : 'Редактирование',
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
-          
-          TextField(
-            controller: _labelController,
-            decoration: const InputDecoration(
-              labelText: 'Название (Label)',
-              border: OutlineInputBorder(),
-              isDense: true,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.existingElement == null 
+                  ? (isPoint ? 'Новая точка' : 'Новая линия') 
+                  : 'Редактирование',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
-            autofocus: widget.existingElement == null, // Фокус только при создании
-          ),
-          const SizedBox(height: 12),
-          
-          TextField(
-            controller: _descController,
-            decoration: const InputDecoration(
-              labelText: 'Описание (опционально)',
-              border: OutlineInputBorder(),
-              isDense: true,
+            const SizedBox(height: 12),
+            
+            TextField(
+              controller: _labelController,
+              decoration: const InputDecoration(
+                labelText: 'Название (Label)',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              autofocus: widget.existingElement == null,
             ),
-            maxLines: 2,
-          ),
-          const SizedBox(height: 16),
-          
-          const Text('Цвет:', style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: _palette.map((hex) {
-              final color = Color(int.parse(hex.replaceFirst('#', '0xFF')));
-              final isSelected = _currentColorHex == hex;
-              return GestureDetector(
-                onTap: () => setState(() => _currentColorHex = hex),
-                child: Container(
-                  width: 36, height: 36,
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: isSelected ? Colors.blue : Colors.grey.shade400,
-                      width: isSelected ? 3 : 1,
-                    ),
-                    boxShadow: isSelected ? [const BoxShadow(color: Colors.black26, blurRadius: 4)] : null,
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          
-          if (isPoint) ...[
+            const SizedBox(height: 12),
+            
+            TextField(
+              controller: _descController,
+              decoration: const InputDecoration(
+                labelText: 'Описание (опционально)',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              maxLines: 1, // ИЗМЕНЕНО: Однострочный режим для выравнивания высоты
+            ),
             const SizedBox(height: 16),
-            const Text('Иконка:', style: TextStyle(fontWeight: FontWeight.bold)),
+            
+            const Text('Цвет:', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            SizedBox(
-              height: 120, // Фиксированная высота для сетки иконок
-              child: GridView.builder(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 5,
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                ),
-                itemCount: TacticalIconManager.availableIcons.length,
-                itemBuilder: (context, index) {
-                  final iconItem = TacticalIconManager.availableIcons[index];
-                  final isSelected = _currentIconKey == iconItem.key;
-                  return GestureDetector(
-                    onTap: () => setState(() => _currentIconKey = iconItem.key),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: isSelected ? Colors.blue.shade100 : Colors.transparent,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: isSelected ? Colors.blue : Colors.transparent),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: _palette.map((hex) {
+                final color = Color(int.parse(hex.replaceFirst('#', '0xFF')));
+                final isSelected = _currentColorHex == hex;
+                return GestureDetector(
+                  onTap: () => setState(() => _currentColorHex = hex),
+                  child: Container(
+                    width: 36, height: 36,
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: isSelected ? Colors.blue : Colors.grey.shade400,
+                        width: isSelected ? 3 : 1,
                       ),
-                      child: Icon(iconItem.data, color: isSelected ? Colors.blue : Colors.black87),
                     ),
-                  );
-                },
-              ),
+                  ),
+                );
+              }).toList(),
             ),
-          ],
-
-          if (!isPoint) ...[
-            const SizedBox(height: 16),
-            Text('Толщина линии: ${_currentLineWidth.toStringAsFixed(1)}', 
-                 style: const TextStyle(fontWeight: FontWeight.bold)),
-            Slider(
-              value: _currentLineWidth,
-              min: 2.0, max: 8.0, divisions: 6,
-              onChanged: (val) => setState(() => _currentLineWidth = val),
-            ),
-          ],
-
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(null),
-                child: const Text('Отмена'),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                onPressed: _save,
-                child: const Text('Сохранить'),
+            
+            if (isPoint) ...[
+              const SizedBox(height: 16),
+              const Text('Иконка:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 96, // ИЗМЕНЕНО: Компактная высота контейнера под новую плотную сетку
+                child: GridView.builder(
+                  shrinkWrap: true,
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 6, // ИЗМЕНЕНО: 6 колонок для синхронизации с палитрой цветов
+                    crossAxisSpacing: 14, // ИЗМЕНЕНО: Плотные горизонтальные интервалы
+                    mainAxisSpacing: 10,  // ИЗМЕНЕНО: Плотные вертикальные интервалы
+                  ),
+                  itemCount: TacticalIconManager.availableIcons.length,
+                  itemBuilder: (context, index) {
+                    final iconItem = TacticalIconManager.availableIcons[index];
+                    final isSelected = _currentIconKey == iconItem.key;
+                    return GestureDetector(
+                      onTap: () => setState(() => _currentIconKey = iconItem.key),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: isSelected ? Colors.blue.shade100 : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: isSelected ? Colors.blue : Colors.transparent),
+                        ),
+                        child: Icon(iconItem.data, color: isSelected ? Colors.blue : Colors.black87),
+                      ),
+                    );
+                  },
+                ),
               ),
             ],
-          ),
-        ],
+
+            if (!isPoint) ...[
+              const SizedBox(height: 16),
+              Text('Толщина линии: ${_currentLineWidth.toStringAsFixed(1)}', 
+                   style: const TextStyle(fontWeight: FontWeight.bold)),
+              Slider(
+                value: _currentLineWidth,
+                min: 2.0, max: 8.0, divisions: 6,
+                onChanged: (val) => setState(() => _currentLineWidth = val),
+              ),
+            ],
+
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(null),
+                  child: const Text('Отмена'),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: _save,
+                  child: const Text('Сохранить'),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
