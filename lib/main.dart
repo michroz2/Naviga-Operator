@@ -1,12 +1,14 @@
 /*
  * Файл: main.dart
- * Версия: 1.32.7
- * Изменения: ЭТАП Настроек, Шаг 7. Корневой виджет подписан на AppSettings. Настроена поддержка темной темы (ThemeMode).
+ * Версия: 1.38.0
+ * Изменения: Архитектурный план, Шаг 1 (Хотфикс). Инициализация ObjectBoxBackend вместо удаленного класса FlutterMapTileCaching.
  * Описание: Главная точка входа в приложение с поддержкой фонового режима.
  */
 
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart'; 
+
 import 'app_config.dart';
 import 'scanner_screen.dart';
 import 'background_manager.dart';
@@ -15,6 +17,10 @@ import 'app_settings.dart';
 void main() async {
   // Гарантируем инициализацию фреймворка перед обращением к нативным плагинам
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ИЗМЕНЕНИЕ: Шаг 1 (Исправление). Инициализация ObjectBox и создание хранилища
+  await FMTCObjectBoxBackend().initialise();
+  await FMTCStore('NavigaStore').manage.create();
 
   // Инициализируем конфигурацию фонового сервиса
   await BackgroundManager.initializeService();
@@ -37,7 +43,7 @@ class NavigaTestApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ИЗМЕНЕНИЕ 1.32.7: Подписываем всё приложение на настройки, чтобы тема менялась на лету
+    // Подписываем всё приложение на настройки, чтобы тема менялась на лету
     return ListenableBuilder(
       listenable: AppSettings(),
       builder: (context, child) {
