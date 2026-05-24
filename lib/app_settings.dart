@@ -1,7 +1,7 @@
 /*
  * Файл: app_settings.dart
- * Версия: 1.35.1
- * Изменения: Добавлен параметр invertMapColors для инверсии цветов слоя карты.
+ * Версия: 1.37.3
+ * Изменения: Добавлены параметры showDrawingToolbar и showDrawingLabels для управления тактической разметкой.
  */
 
 import 'package:flutter/foundation.dart';
@@ -27,8 +27,11 @@ class AppSettings extends ChangeNotifier {
   double _gridWidth = 1.0;
   double _gridOpacity = 0.35;
   
-  // НОВЫЙ ПАРАМЕТР: Инверсия карты
   bool _invertMapColors = false;
+
+  // ИЗМЕНЕНИЕ 1.37.3: Новые настройки тактической разметки
+  bool _showDrawingToolbar = false;
+  bool _showDrawingLabels = true;
 
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
@@ -52,6 +55,10 @@ class AppSettings extends ChangeNotifier {
     _gridOpacity = _prefs!.getDouble('gridOpacity') ?? 0.35;
     
     _invertMapColors = _prefs!.getBool('invertMapColors') ?? false;
+
+    // Чтение новых параметров разметки
+    _showDrawingToolbar = _prefs!.getBool('showDrawingToolbar') ?? false;
+    _showDrawingLabels = _prefs!.getBool('showDrawingLabels') ?? true;
     
     notifyListeners();
   }
@@ -70,6 +77,9 @@ class AppSettings extends ChangeNotifier {
   double get gridOpacity => _gridOpacity;
   
   bool get invertMapColors => _invertMapColors;
+
+  bool get showDrawingToolbar => _showDrawingToolbar;
+  bool get showDrawingLabels => _showDrawingLabels;
 
   void setTrackTimeMs(int value) {
     if (_trackTimeMs != value) {
@@ -155,6 +165,23 @@ class AppSettings extends ChangeNotifier {
     if (_invertMapColors != value) {
       _invertMapColors = value;
       _prefs?.setBool('invertMapColors', value);
+      notifyListeners();
+    }
+  }
+
+  // Сеттеры для новых параметров
+  void setShowDrawingToolbar(bool value) {
+    if (_showDrawingToolbar != value) {
+      _showDrawingToolbar = value;
+      _prefs?.setBool('showDrawingToolbar', value);
+      notifyListeners();
+    }
+  }
+
+  void setShowDrawingLabels(bool value) {
+    if (_showDrawingLabels != value) {
+      _showDrawingLabels = value;
+      _prefs?.setBool('showDrawingLabels', value);
       notifyListeners();
     }
   }

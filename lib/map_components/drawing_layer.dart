@@ -1,10 +1,8 @@
 /*
  * Файл: drawing_layer.dart
- * Версия: 1.36.13
+ * Версия: 1.37.3
  * Описание: Слой отрисовки тактической разметки поверх карты.
- * Изменения: Внедрен алгоритм отсечения Лианга-Барски (Dynamic Viewport Labeling). 
- * Подписи линий рассчитываются исключительно по сегментам, видимым на экране в данный момент,
- * плавно скользя вдоль маршрута при перемещении карты (без искажения углов и отрыва от линии).
+ * Изменения: Внедрена поддержка глобальной настройки showDrawingLabels. При её отключении рендерится только иконка/маршрут без текстовых виджетов.
  */
 
 import 'dart:math' as math;
@@ -14,6 +12,7 @@ import 'package:latlong2/latlong.dart';
 import 'drawing_manager.dart';
 import 'drawing_models.dart';
 import 'tactical_icon_manager.dart';
+import '../app_settings.dart'; // ИЗМЕНЕНИЕ: Доступ к настройкам
 
 class MapDrawingLayer extends StatelessWidget {
   const MapDrawingLayer({super.key});
@@ -21,10 +20,11 @@ class MapDrawingLayer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: DrawingManager(),
+      listenable: Listenable.merge([DrawingManager(), AppSettings()]), // Слушаем и разметку, и настройки
       builder: (context, _) {
         final camera = MapCamera.of(context);
         final elements = DrawingManager().elements;
+        final showLabels = AppSettings().showDrawingLabels; // Читаем настройку
         
         List<Marker> markers = [];
         List<Polyline> polylines = [];
@@ -36,7 +36,7 @@ class MapDrawingLayer extends StatelessWidget {
             markers.add(Marker(
               point: LatLng(el.lat, el.lon),
               width: 100,
-              height: 55,
+              height: showLabels ? 55 : 30, // Меньшая высота, если текста нет
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -45,38 +45,40 @@ class MapDrawingLayer extends StatelessWidget {
                     color: color,
                     size: 28,
                   ),
-                  const SizedBox(height: 1),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.85),
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: Colors.black12, width: 0.5),
-                    ),
-                    child: Text(
-                      el.label,
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
+                  // ИЗМЕНЕНИЕ: Условный рендеринг текстовой подписи
+                  if (showLabels) ...[
+                    const SizedBox(height: 1),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.85),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.black12, width: 0.5),
                       ),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
+                      child: Text(
+                        el.label,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ));
           } else if (el is TacticalLine) {
-            // Отрисовка гео-маршрута
             polylines.add(Polyline(
               points: el.path,
               strokeWidth: el.width,
               color: color,
             ));
 
-            // Адаптивный расчет подписи во фрустуме экрана
-            if (el.path.length >= 2 && el.label.isNotEmpty) {
+            // ИЗМЕНЕНИЕ: Метки для линий рассчитываются только если настройка включена
+            if (showLabels && el.path.length >= 2 && el.label.isNotEmpty) {
               final labelMarker = _calculateDynamicLineLabel(el, camera, color);
               if (labelMarker != null) {
                 markers.add(labelMarker);
@@ -96,7 +98,6 @@ class MapDrawingLayer extends StatelessWidget {
   }
 
   // Алгоритм отсечения отрезка Лианга-Барски (Liang-Barsky Line Clipping)
-  // Возвращает видимую на экране часть отрезка или null, если он полностью невидим.
   List<math.Point<double>>? _clipSegment(math.Point<double> p1, math.Point<double> p2, double minX, double minY, double maxX, double maxY) {
     double t0 = 0.0;
     double t1 = 1.0;
@@ -132,7 +133,6 @@ class MapDrawingLayer extends StatelessWidget {
 
   // Расчет плавающей подписи линии на основе видимых сегментов
   Marker? _calculateDynamicLineLabel(TacticalLine line, MapCamera camera, Color color) {
-    // Внутренний отступ 20px, чтобы текст не "бился" о самые края экрана
     final double minX = 20.0;
     final double minY = 20.0;
     final double maxX = camera.size.x - 20.0;
@@ -142,43 +142,33 @@ class MapDrawingLayer extends StatelessWidget {
     math.Point<double>? bestMidPoint;
     double bestAngle = 0.0;
 
-    // Перевод линии в экранные координаты
     List<math.Point<double>> screenPoints = [];
     for (var latLng in line.path) {
       final p = camera.latLngToScreenPoint(latLng);
       screenPoints.add(math.Point(p.x.toDouble(), p.y.toDouble()));
     }
 
-    // Анализ сегментов
     for (int i = 0; i < screenPoints.length - 1; i++) {
       final p1 = screenPoints[i];
       final p2 = screenPoints[i + 1];
 
-      // Получаем видимую часть отрезка на экране
       final clipped = _clipSegment(p1, p2, minX, minY, maxX, maxY);
       
       if (clipped != null) {
-        // Длина только той части, которую видит оператор
         final visibleDistPx = math.sqrt(math.pow(clipped[1].x - clipped[0].x, 2) + math.pow(clipped[1].y - clipped[0].y, 2));
 
         if (visibleDistPx > maxVisibleSegmentDistPx) {
           maxVisibleSegmentDistPx = visibleDistPx;
-          
-          // Центр высчитывается строго по видимой части отрезка
           bestMidPoint = math.Point((clipped[0].x + clipped[1].x) / 2, (clipped[0].y + clipped[1].y) / 2);
-          
-          // Угол сохраняем от оригинального вектора, чтобы избежать математических артефактов
           bestAngle = math.atan2(p2.y - p1.y, p2.x - p1.x);
         }
       }
     }
 
-    // Защита: если на экране нет куска линии длиннее 85px, скрываем текст
     if (maxVisibleSegmentDistPx < 85 || bestMidPoint == null) return null;
 
     final labelLatLng = camera.pointToLatLng(bestMidPoint);
 
-    // Нормализация текста (слева направо)
     if (bestAngle > math.pi / 2) {
       bestAngle -= math.pi;
     } else if (bestAngle < -math.pi / 2) {

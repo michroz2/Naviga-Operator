@@ -1,8 +1,8 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.36.14
+ * Версия: 1.37.4
  * Описание: Главный экран-оркестратор интерактивной карты с поддержкой тактической разметки.
- * Изменения: Внедрен вызов Read-Only окна информации (DrawingInfoSheet) при тапе по объекту в режиме View.
+ * Изменения: Изменен приоритет перехвата тапов. Инструменты рисования (Point/Line) срабатывают безусловно, реализована магнитная привязка (Snapping) линии к узлам и точкам.
  */
 
 import 'dart:async';
@@ -101,14 +101,14 @@ class _MapScreenState extends State<MapScreen> {
     final manager = DrawingManager();
     final metersPerPixel = (math.cos(tappedPoint.latitude * math.pi / 180) * 2 * math.pi * 6378137) / (256 * math.pow(2, camera.zoom));
     final searchRadiusMeters = 40.0 * metersPerPixel;
+    const distanceCalculator = Distance();
 
+    // Находим ближайший тактический объект
     TacticalPoint? closestPoint;
     double minPointDistMeters = searchRadiusMeters;
 
     TacticalLine? closestLine;
     double minLineDistMeters = searchRadiusMeters;
-    
-    const distanceCalculator = Distance();
 
     for (var element in manager.elements) {
       if (element is TacticalPoint) {
@@ -129,10 +129,55 @@ class _MapScreenState extends State<MapScreen> {
       }
     }
 
+    // ИЗМЕНЕНИЕ 1.37.4: Приоритет инструментов рисования + Магнитная привязка
+    if (_activeTool == DrawingTool.line) {
+      LatLng pointToAdd = tappedPoint;
+      
+      // Магнитная привязка к нарисованным точкам
+      if (closestPoint != null) {
+        pointToAdd = LatLng(closestPoint.lat, closestPoint.lon);
+      } else {
+        // Магнитная привязка к узлам сети
+        final nodes = _bleService.nodeDatabase.nodes.values.where((n) => n.hasValidGps);
+        double minNodeDist = searchRadiusMeters;
+        for (var node in nodes) {
+          final dist = distanceCalculator.distance(tappedPoint, LatLng(node.lat, node.lon));
+          if (dist < minNodeDist) {
+            minNodeDist = dist;
+            pointToAdd = LatLng(node.lat, node.lon);
+          }
+        }
+      }
+
+      setState(() {
+        _currentDrawingLinePath.add(pointToAdd);
+      });
+      return; // Завершаем выполнение, игнорируя меню объектов
+    }
+
+    // ИЗМЕНЕНИЕ 1.37.4: Создание точки поверх других объектов
+    if (_activeTool == DrawingTool.point) {
+      final attrs = await showModalBottomSheet<Map<String, dynamic>>(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) => const DrawingMenuSheet(targetType: TacticalType.point),
+      );
+
+      if (attrs != null) {
+        final newId = DateTime.now().millisecondsSinceEpoch.toString();
+        manager.addElement(TacticalPoint(
+          id: newId, lat: tappedPoint.latitude, lon: tappedPoint.longitude,
+          label: attrs['label'], description: attrs['description'],
+          colorHex: attrs['colorHex'], iconKey: attrs['iconKey'],
+        ));
+      }
+      return; // Завершаем выполнение
+    }
+
+    // Обрабатываем клики по существующим объектам только для режимов View, Select и Eraser
     TacticalElement? closest = closestPoint ?? closestLine;
 
     if (closest != null) {
-      // ИЗМЕНЕНИЕ: Внедрен вызов информационного окна для режима просмотра
       if (_activeTool == DrawingTool.view) {
         showModalBottomSheet(
           context: context,
@@ -143,7 +188,6 @@ class _MapScreenState extends State<MapScreen> {
           builder: (_) => DrawingInfoSheet(element: closest),
         );
       } else if (_activeTool == DrawingTool.select) {
-        // Редактирование существующего объекта
         final attrs = await showModalBottomSheet<Map<String, dynamic>>(
           context: context,
           isScrollControlled: true,
@@ -171,39 +215,14 @@ class _MapScreenState extends State<MapScreen> {
       } else if (_activeTool == DrawingTool.eraser) {
         manager.removeElement(closest.id);
       }
-    } else {
-      // Если клик в пустоту
-      if (_activeTool == DrawingTool.point) {
-        final attrs = await showModalBottomSheet<Map<String, dynamic>>(
-          context: context,
-          isScrollControlled: true,
-          builder: (_) => const DrawingMenuSheet(targetType: TacticalType.point),
-        );
-
-        if (attrs != null) {
-          final newId = DateTime.now().millisecondsSinceEpoch.toString();
-          manager.addElement(TacticalPoint(
-            id: newId, lat: tappedPoint.latitude, lon: tappedPoint.longitude,
-            label: attrs['label'], description: attrs['description'],
-            colorHex: attrs['colorHex'], iconKey: attrs['iconKey'],
-          ));
-        }
-      } else if (_activeTool == DrawingTool.line) {
-        setState(() {
-          _currentDrawingLinePath.add(tappedPoint);
-        });
-      }
     }
   }
 
-  // Обработка завершения рисования линии
   Future<void> _processLineCompletion(DrawingTool newTool) async {
     if (_currentDrawingLinePath.length > 1) {
       if (newTool == DrawingTool.eraser) {
-        // Сброс без подтверждения (Eraser)
         setState(() => _currentDrawingLinePath.clear());
       } else {
-        // Запрос атрибутов
         final attrs = await showModalBottomSheet<Map<String, dynamic>>(
           context: context,
           isScrollControlled: true,
@@ -281,8 +300,6 @@ class _MapScreenState extends State<MapScreen> {
                 flags: interactiveFlags,
               ),
               onTap: (tapPosition, latLng) {
-                // ИЗМЕНЕНИЕ: Убран жесткий блокиратор "return" для _activeTool == DrawingTool.view
-                // Логика просмотра перенесена внутрь _handleDrawingTap
                 _handleDrawingTap(latLng, _mapController.camera);
               },
               onMapReady: () {
@@ -316,7 +333,6 @@ class _MapScreenState extends State<MapScreen> {
 
               const MapDrawingLayer(),
 
-              // Эскиз линии с живыми атрибутами
               if (_currentDrawingLinePath.length > 1)
                 PolylineLayer(
                   polylines: [
@@ -430,28 +446,28 @@ class _MapScreenState extends State<MapScreen> {
                 child: SafeArea(child: MapCompassWidget()),
               ),
 
-              Align(
-                alignment: Alignment.topLeft,
-                child: SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 16.0, left: 16.0),
-                    child: DrawingToolbar(
-                      activeTool: _activeTool,
-                      onToolSelected: (tool) {
-                        final previousTool = _activeTool;
-                        setState(() {
-                          _activeTool = tool;
-                        });
-                        
-                        // Логика обработки завершения линии
-                        if (previousTool == DrawingTool.line && tool != DrawingTool.line) {
-                          _processLineCompletion(tool);
-                        }
-                      },
+              if (AppSettings().showDrawingToolbar)
+                Align(
+                  alignment: Alignment.topLeft,
+                  child: SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 16.0, left: 16.0),
+                      child: DrawingToolbar(
+                        activeTool: _activeTool,
+                        onToolSelected: (tool) {
+                          final previousTool = _activeTool;
+                          setState(() {
+                            _activeTool = tool;
+                          });
+                          
+                          if (previousTool == DrawingTool.line && tool != DrawingTool.line) {
+                            _processLineCompletion(tool);
+                          }
+                        },
+                      ),
                     ),
                   ),
                 ),
-              ),
             ],
           );
         },

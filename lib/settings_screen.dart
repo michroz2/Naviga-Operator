@@ -1,7 +1,7 @@
 /*
  * Файл: settings_screen.dart
- * Версия: 1.35.1
- * Изменения: Добавлен свитч "Инверсия цветов карты" (ночной режим подложки).
+ * Версия: 1.37.3
+ * Изменения: Добавлен блок "Тактическая разметка" со свитчами управления тулбаром и подписями.
  */
 
 import 'package:flutter/material.dart';
@@ -28,6 +28,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late double _gridWidth;
   late double _gridOpacity;
   late bool _invertMapColors;
+  
+  // Новые параметры
+  late bool _showDrawingToolbar;
+  late bool _showDrawingLabels;
 
   bool _isCancelled = false;
 
@@ -60,6 +64,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _gridWidth = _settings.gridWidth;
     _gridOpacity = _settings.gridOpacity;
     _invertMapColors = _settings.invertMapColors;
+    
+    _showDrawingToolbar = _settings.showDrawingToolbar;
+    _showDrawingLabels = _settings.showDrawingLabels;
   }
 
   void _saveAllSettings() {
@@ -74,6 +81,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _settings.setGridWidth(_gridWidth);
     _settings.setGridOpacity(_gridOpacity);
     _settings.setInvertMapColors(_invertMapColors);
+    
+    _settings.setShowDrawingToolbar(_showDrawingToolbar);
+    _settings.setShowDrawingLabels(_showDrawingLabels);
   }
 
   void _showResetConfirmation(BuildContext context) {
@@ -103,6 +113,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _gridWidth = 1.0;
                   _gridOpacity = 0.35;
                   _invertMapColors = false;
+                  
+                  _showDrawingToolbar = false;
+                  _showDrawingLabels = true;
                 });
               },
               style: TextButton.styleFrom(foregroundColor: Colors.orange.shade900),
@@ -181,6 +194,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
               10.0,
               9,
               (val) => setState(() => _trackWidth = val),
+            ),
+            const Divider(height: 32),
+
+            // ИЗМЕНЕНИЕ 1.37.3: Новый блок настроек разметки
+            _buildSectionHeader(Icons.edit_location_alt, 'Тактическая разметка'),
+            SwitchListTile(
+              title: const Text('Панель инструментов разметки', style: TextStyle(fontWeight: FontWeight.w500)),
+              subtitle: const Text('Отображать кнопку редактирования на карте. Отключите для защиты от случайных действий.'),
+              value: _showDrawingToolbar,
+              onChanged: (val) => setState(() => _showDrawingToolbar = val),
+            ),
+            SwitchListTile(
+              title: const Text('Текстовые подписи объектов', style: TextStyle(fontWeight: FontWeight.w500)),
+              subtitle: const Text('Показывать названия рядом с нарисованными точками и линиями.'),
+              value: _showDrawingLabels,
+              onChanged: (val) => setState(() => _showDrawingLabels = val),
             ),
             const Divider(height: 32),
 
