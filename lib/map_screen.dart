@@ -1,8 +1,8 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.37.4
+ * Версия: 1.38.1
  * Описание: Главный экран-оркестратор интерактивной карты с поддержкой тактической разметки.
- * Изменения: Изменен приоритет перехвата тапов. Инструменты рисования (Point/Line) срабатывают безусловно, реализована магнитная привязка (Snapping) линии к узлам и точкам.
+ * Изменения: Архитектурный план, Шаг 2. Подключение гибридного пассивного кэширования (FMTCTileProvider) к слоям TileLayer.
  */
 
 import 'dart:async';
@@ -12,6 +12,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:flutter_compass/flutter_compass.dart'; 
+import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart'; // ИЗМЕНЕНИЕ 1.38.1: Импорт FMTC
 
 import 'ble_service.dart';
 import 'roster_screen.dart'; 
@@ -129,7 +130,7 @@ class _MapScreenState extends State<MapScreen> {
       }
     }
 
-    // ИЗМЕНЕНИЕ 1.37.4: Приоритет инструментов рисования + Магнитная привязка
+    // Приоритет инструментов рисования + Магнитная привязка
     if (_activeTool == DrawingTool.line) {
       LatLng pointToAdd = tappedPoint;
       
@@ -155,7 +156,7 @@ class _MapScreenState extends State<MapScreen> {
       return; // Завершаем выполнение, игнорируя меню объектов
     }
 
-    // ИЗМЕНЕНИЕ 1.37.4: Создание точки поверх других объектов
+    // Создание точки поверх других объектов
     if (_activeTool == DrawingTool.point) {
       final attrs = await showModalBottomSheet<Map<String, dynamic>>(
         context: context,
@@ -320,12 +321,14 @@ class _MapScreenState extends State<MapScreen> {
                   child: TileLayer(
                     urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     userAgentPackageName: 'com.michroz2.naviga_operator',
+                    tileProvider: FMTCStore('NavigaStore').getTileProvider(), // ИЗМЕНЕНИЕ 1.38.1
                   ),
                 )
               else
                 TileLayer(
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'com.michroz2.naviga_operator',
+                  tileProvider: FMTCStore('NavigaStore').getTileProvider(), // ИЗМЕНЕНИЕ 1.38.1
                 ),
               
               if (_isMapReady && AppSettings().showGrid)
