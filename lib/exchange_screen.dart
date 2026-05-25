@@ -33,9 +33,9 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
     }
 
     try {
-      final file = await DrawingStorage().prepareExportFile(manager.elements);
+      final path = await DrawingStorage().prepareExportFile(manager.elements);
       await Share.shareXFiles(
-        [XFile(file.path, mimeType: 'application/json')], 
+        [XFile(path, mimeType: 'application/json')], 
         text: 'Тактическая разметка Naviga',
       );
     } catch (e) {

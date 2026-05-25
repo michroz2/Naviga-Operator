@@ -1,8 +1,7 @@
 /*
  * Файл: main_menu_screen.dart
- * Версия: 1.37.2
+ * Версия: 1.38.4
  * Описание: Главный дашборд управления Донглом.
- * Изменения: Рефакторинг UX — блок «Обмен картами» перенесен в отдельный экран ExchangeScreen.
  */
 
 import 'dart:convert';
@@ -15,7 +14,7 @@ import 'ble_service.dart';
 import 'roster_screen.dart';
 import 'map_screen.dart';
 import 'settings_screen.dart';
-import 'exchange_screen.dart'; // НОВЫЙ ИМПОРТ
+import 'exchange_screen.dart'; 
 
 import 'map_components/drawing_manager.dart';
 
@@ -77,7 +76,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // КНОПКА ОТКЛЮЧЕНИЯ
               ElevatedButton.icon(
                 onPressed: () => _bleService.disconnect(),
                 icon: const Icon(Icons.bluetooth_disabled),
@@ -90,7 +88,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               ),
               const SizedBox(height: 20),
 
-              // --- БЛОК ТОПОЛОГИИ СЕТИ ---
               ListenableBuilder(
                 listenable: Listenable.merge([_bleService.nodeDatabase, _bleService.identityNotifier]),
                 builder: (context, child) {
@@ -129,7 +126,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               ),
               const SizedBox(height: 10),
 
-              // --- БЛОК КАРТЫ ---
               ListenableBuilder(
                 listenable: _bleService.nodeDatabase,
                 builder: (context, child) {
@@ -176,7 +172,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               ),
               const SizedBox(height: 10),
 
-              // --- БЛОК ТЕЛЕМЕТРИИ ---
               ValueListenableBuilder<BleEvtMyStatus?>(
                 valueListenable: _bleService.myStatusNotifier,
                 builder: (context, status, child) {
@@ -264,7 +259,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               ),
               const SizedBox(height: 10),
 
-              // --- БЛОК ИДЕНТИФИКАЦИИ ---
               ValueListenableBuilder<BleIdentity?>(
                 valueListenable: _bleService.identityNotifier,
                 builder: (context, identity, child) {
@@ -300,7 +294,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               ),
               const SizedBox(height: 10),
 
-              // --- БЛОК СИСТЕМНЫХ ТАЙМЕРОВ ---
               ValueListenableBuilder<BleSysConfig?>(
                 valueListenable: _bleService.sysConfigNotifier,
                 builder: (context, config, child) {
@@ -337,7 +330,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               ),
               const SizedBox(height: 10),
 
-              // --- БЛОК НАСТРОЕК ПРИЛОЖЕНИЯ ---
               Card(
                 elevation: 4,
                 child: InkWell(
@@ -362,7 +354,36 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               ),
               const SizedBox(height: 10),
 
-              // --- БЛОК ОБМЕНА КАРТАМИ (В САМОМ НИЗУ) ---
+              Card(
+                elevation: 4,
+                child: InkWell(
+                  onTap: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const MapScreen(isOfflineSelectMode: true)));
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: const Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Row(
+                      children: [
+                        Icon(Icons.download_for_offline, color: Colors.blueGrey, size: 32),
+                        SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Оффлайн-карты', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                              Text('Выбор региона для загрузки', style: TextStyle(fontSize: 14, color: Colors.grey)),
+                            ],
+                          ),
+                        ),
+                        Icon(Icons.chevron_right, color: Colors.grey),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+
               Card(
                 elevation: 4,
                 child: InkWell(
@@ -393,10 +414,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     );
   }
 }
-
-// ============================================================================
-// Вспомогательные классы и экраны настроек
-// ============================================================================
 
 class Utf8ByteLengthFormatter extends TextInputFormatter {
   final int maxBytes;

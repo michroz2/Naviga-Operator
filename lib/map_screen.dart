@@ -1,8 +1,7 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.38.1
+ * Версия: 1.38.4
  * Описание: Главный экран-оркестратор интерактивной карты с поддержкой тактической разметки.
- * Изменения: Архитектурный план, Шаг 2. Подключение гибридного пассивного кэширования (FMTCTileProvider) к слоям TileLayer.
  */
 
 import 'dart:async';
@@ -12,27 +11,31 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:flutter_compass/flutter_compass.dart'; 
-import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart'; // ИЗМЕНЕНИЕ 1.38.1: Импорт FMTC
+import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart'; 
 
 import 'ble_service.dart';
 import 'roster_screen.dart'; 
 import 'app_settings.dart'; 
 
-// Базовые компоненты карты
 import 'map_components/map_marker_manager.dart';
 import 'map_components/map_scale_bar.dart';
 import 'map_components/map_compass.dart';
 import 'map_components/map_grid_layer.dart';
 
-// Новые компоненты тактической разметки (UC-22)
 import 'map_components/drawing_toolbar.dart';
 import 'map_components/drawing_manager.dart';
 import 'map_components/drawing_models.dart';
 import 'map_components/drawing_layer.dart';
 import 'map_components/drawing_menu_sheet.dart'; 
+import 'map_components/region_download_sheet.dart';
 
 class MapScreen extends StatefulWidget {
-  const MapScreen({super.key});
+  final bool isOfflineSelectMode; 
+
+  const MapScreen({
+    super.key, 
+    this.isOfflineSelectMode = false,
+  });
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -48,6 +51,10 @@ class _MapScreenState extends State<MapScreen> {
 
   DrawingTool _activeTool = DrawingTool.view;
   final List<LatLng> _currentDrawingLinePath = [];
+
+  bool _isRegionDrawingActive = false; 
+  LatLng? _regionDragStart;
+  LatLng? _regionDragCurrent;
 
   @override
   void initState() {
@@ -79,6 +86,14 @@ class _MapScreenState extends State<MapScreen> {
 
   void _applyCompassMode() {
     if (!_isMapReady) return;
+    
+    if (widget.isOfflineSelectMode) {
+      _compassSubscription?.cancel();
+      _compassSubscription = null;
+      _mapController.rotate(0);
+      return;
+    }
+
     final mode = AppSettings().compassMode;
     
     if (mode == 2) {
@@ -99,12 +114,13 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> _handleDrawingTap(LatLng tappedPoint, MapCamera camera) async {
+    if (widget.isOfflineSelectMode) return;
+
     final manager = DrawingManager();
     final metersPerPixel = (math.cos(tappedPoint.latitude * math.pi / 180) * 2 * math.pi * 6378137) / (256 * math.pow(2, camera.zoom));
     final searchRadiusMeters = 40.0 * metersPerPixel;
     const distanceCalculator = Distance();
 
-    // Находим ближайший тактический объект
     TacticalPoint? closestPoint;
     double minPointDistMeters = searchRadiusMeters;
 
@@ -130,15 +146,12 @@ class _MapScreenState extends State<MapScreen> {
       }
     }
 
-    // Приоритет инструментов рисования + Магнитная привязка
     if (_activeTool == DrawingTool.line) {
       LatLng pointToAdd = tappedPoint;
       
-      // Магнитная привязка к нарисованным точкам
       if (closestPoint != null) {
         pointToAdd = LatLng(closestPoint.lat, closestPoint.lon);
       } else {
-        // Магнитная привязка к узлам сети
         final nodes = _bleService.nodeDatabase.nodes.values.where((n) => n.hasValidGps);
         double minNodeDist = searchRadiusMeters;
         for (var node in nodes) {
@@ -153,10 +166,9 @@ class _MapScreenState extends State<MapScreen> {
       setState(() {
         _currentDrawingLinePath.add(pointToAdd);
       });
-      return; // Завершаем выполнение, игнорируя меню объектов
+      return; 
     }
 
-    // Создание точки поверх других объектов
     if (_activeTool == DrawingTool.point) {
       final attrs = await showModalBottomSheet<Map<String, dynamic>>(
         context: context,
@@ -172,10 +184,9 @@ class _MapScreenState extends State<MapScreen> {
           colorHex: attrs['colorHex'], iconKey: attrs['iconKey'],
         ));
       }
-      return; // Завершаем выполнение
+      return; 
     }
 
-    // Обрабатываем клики по существующим объектам только для режимов View, Select и Eraser
     TacticalElement? closest = closestPoint ?? closestLine;
 
     if (closest != null) {
@@ -257,223 +268,361 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  Widget _buildOfflineRegionToolbar() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: _isRegionDrawingActive
+          ? IconButton(
+              icon: const Icon(Icons.close, color: Colors.red),
+              tooltip: 'Отменить выделение',
+              onPressed: () {
+                setState(() {
+                  _isRegionDrawingActive = false;
+                  _regionDragStart = null;
+                  _regionDragCurrent = null;
+                });
+              },
+            )
+          : IconButton(
+              icon: const Icon(Icons.crop_square, color: Colors.blueGrey),
+              tooltip: 'Активировать рамку региона',
+              onPressed: () {
+                setState(() {
+                  _isRegionDrawingActive = true;
+                });
+              },
+            ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Naviga Map'),
+        title: Text(widget.isOfflineSelectMode ? 'Выбор оффлайн-карты' : 'Naviga Map'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
-      body: ListenableBuilder(
-        listenable: Listenable.merge([
-          _bleService.nodeDatabase,
-          _bleService.identityNotifier,
-          _bleService.sysConfigNotifier,
-          AppSettings(),
-          DrawingManager(), 
-        ]),
-        builder: (context, child) {
-          final nodes = _bleService.nodeDatabase.nodes.values
-              .where((n) => n.hasValidGps)
-              .toList();
-
-          final myId = _bleService.identityNotifier.value?.myNodeId;
-          final timeoutMs = _bleService.sysConfigNotifier.value?.nodeConnectionTimeout ?? 600000;
-          final now = DateTime.now().millisecondsSinceEpoch;
-
-          LatLng initialCenter = const LatLng(0, 0);
-          if (nodes.isNotEmpty) {
-            final myNode = nodes.firstWhere((n) => n.nodeId == myId, orElse: () => nodes.first);
-            initialCenter = LatLng(myNode.lat, myNode.lon);
+      body: Listener(
+        onPointerDown: (event) {
+          if (!widget.isOfflineSelectMode || !_isRegionDrawingActive || !_isMapReady) return;
+          final point = _mapController.camera.pointToLatLng(math.Point(event.localPosition.dx, event.localPosition.dy));
+          setState(() {
+            _regionDragStart = point;
+            _regionDragCurrent = point;
+          });
+        },
+        onPointerMove: (event) {
+          if (!widget.isOfflineSelectMode || !_isRegionDrawingActive || _regionDragStart == null || !_isMapReady) return;
+          final point = _mapController.camera.pointToLatLng(math.Point(event.localPosition.dx, event.localPosition.dy));
+          setState(() {
+            _regionDragCurrent = point;
+          });
+        },
+        onPointerUp: (event) async {
+          if (!widget.isOfflineSelectMode || !_isRegionDrawingActive || _regionDragStart == null || _regionDragCurrent == null) return;
+          
+          final start = _regionDragStart!;
+          final end = _regionDragCurrent!;
+          
+          const dist = Distance();
+          if (dist.distance(start, end) < 50) {
+            setState(() {
+              _regionDragStart = null;
+              _regionDragCurrent = null;
+            });
+            return;
           }
 
-          int interactiveFlags = InteractiveFlag.all;
-          if (AppSettings().compassMode != 1) {
-            interactiveFlags = InteractiveFlag.all & ~InteractiveFlag.rotate;
-          }
+          final double topLat = math.max(start.latitude, end.latitude);
+          final double bottomLat = math.min(start.latitude, end.latitude);
+          final double leftLon = math.min(start.longitude, end.longitude);
+          final double rightLon = math.max(start.longitude, end.longitude);
+          
+          final topLeft = LatLng(topLat, leftLon);
+          final bottomRight = LatLng(bottomLat, rightLon);
 
-          return FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: initialCenter,
-              initialZoom: 15.0,
-              interactionOptions: InteractionOptions(
-                flags: interactiveFlags,
+          final regionName = await showModalBottomSheet<String>(
+            context: context,
+            isScrollControlled: true,
+            builder: (_) => RegionDownloadSheet(topLeft: topLeft, bottomRight: bottomRight),
+          );
+
+          if (regionName != null) {
+            final newRegion = TacticalRegion(
+              id: DateTime.now().millisecondsSinceEpoch.toString(),
+              topLeft: topLeft,
+              bottomRight: bottomRight,
+              label: regionName,
+              description: 'Оффлайн карта',
+              colorHex: '#2196F3',
+            );
+            DrawingManager().addElement(newRegion);
+            
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Регион $regionName добавлен. Запуск загрузки...'))
+              );
+            }
+            
+            setState(() {
+              _isRegionDrawingActive = false;
+              _regionDragStart = null;
+              _regionDragCurrent = null;
+            });
+          } else {
+            setState(() {
+              _regionDragStart = null;
+              _regionDragCurrent = null;
+            });
+          }
+        },
+        child: ListenableBuilder(
+          listenable: Listenable.merge([
+            _bleService.nodeDatabase,
+            _bleService.identityNotifier,
+            _bleService.sysConfigNotifier,
+            AppSettings(),
+            DrawingManager(), 
+          ]),
+          builder: (context, child) {
+            final nodes = _bleService.nodeDatabase.nodes.values
+                .where((n) => n.hasValidGps)
+                .toList();
+
+            final myId = _bleService.identityNotifier.value?.myNodeId;
+            final timeoutMs = _bleService.sysConfigNotifier.value?.nodeConnectionTimeout ?? 600000;
+            final now = DateTime.now().millisecondsSinceEpoch;
+
+            LatLng initialCenter = const LatLng(0, 0);
+            if (nodes.isNotEmpty) {
+              final myNode = nodes.firstWhere((n) => n.nodeId == myId, orElse: () => nodes.first);
+              initialCenter = LatLng(myNode.lat, myNode.lon);
+            }
+
+            int interactiveFlags = InteractiveFlag.all;
+            
+            if (widget.isOfflineSelectMode) {
+              interactiveFlags = InteractiveFlag.all & ~InteractiveFlag.rotate;
+              if (_isRegionDrawingActive) {
+                interactiveFlags = InteractiveFlag.all & ~InteractiveFlag.drag; 
+              }
+            } else if (AppSettings().compassMode != 1) {
+              interactiveFlags = InteractiveFlag.all & ~InteractiveFlag.rotate;
+            }
+
+            return FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: initialCenter,
+                initialZoom: 15.0,
+                interactionOptions: InteractionOptions(
+                  flags: interactiveFlags,
+                ),
+                onTap: (tapPosition, latLng) {
+                  _handleDrawingTap(latLng, _mapController.camera);
+                },
+                onMapReady: () {
+                  _isMapReady = true;
+                  _applyCompassMode();
+                  setState(() {});
+                },
               ),
-              onTap: (tapPosition, latLng) {
-                _handleDrawingTap(latLng, _mapController.camera);
-              },
-              onMapReady: () {
-                _isMapReady = true;
-                _applyCompassMode();
-                setState(() {});
-              },
-            ),
-            children: [
-              if (AppSettings().invertMapColors)
-                ColorFiltered(
-                  colorFilter: const ColorFilter.matrix(<double>[
-                    -1,  0,  0, 0, 255,
-                     0, -1,  0, 0, 255,
-                     0,  0, -1, 0, 255,
-                     0,  0,  0, 1,   0,
-                  ]),
-                  child: TileLayer(
+              children: [
+                if (AppSettings().invertMapColors)
+                  ColorFiltered(
+                    colorFilter: const ColorFilter.matrix(<double>[
+                      -1,  0,  0, 0, 255,
+                       0, -1,  0, 0, 255,
+                       0,  0, -1, 0, 255,
+                       0,  0,  0, 1,   0,
+                    ]),
+                    child: TileLayer(
+                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.michroz2.naviga_operator',
+                      tileProvider: FMTCStore('NavigaStore').getTileProvider(), 
+                    ),
+                  )
+                else
+                  TileLayer(
                     urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     userAgentPackageName: 'com.michroz2.naviga_operator',
-                    tileProvider: FMTCStore('NavigaStore').getTileProvider(), // ИЗМЕНЕНИЕ 1.38.1
+                    tileProvider: FMTCStore('NavigaStore').getTileProvider(), 
                   ),
-                )
-              else
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.michroz2.naviga_operator',
-                  tileProvider: FMTCStore('NavigaStore').getTileProvider(), // ИЗМЕНЕНИЕ 1.38.1
-                ),
-              
-              if (_isMapReady && AppSettings().showGrid)
-                const MapGridLayer(),
-
-              const MapDrawingLayer(),
-
-              if (_currentDrawingLinePath.length > 1)
-                PolylineLayer(
-                  polylines: [
-                    Polyline(
-                      points: _currentDrawingLinePath,
-                      strokeWidth: DrawingManager().lastLineWidth,
-                      color: Color(int.parse(DrawingManager().lastLineColorHex.replaceFirst('#', '0xFF'))).withOpacity(0.7),
-                    ),
-                  ],
-                ),
                 
-              PolylineLayer(
-                polylines: nodes.map((node) {
-                  final isMe = node.nodeId == myId;
-                  final isOnline = isMe ? true : (now - node.lastSeenTimeMs) <= timeoutMs;
-                  final style = MarkerStyleManager.getStyle(role: node.role, isMe: isMe, isOnline: isOnline);
-                  
-                  final track = node.getRecentTrack(AppSettings().trackTimeMs);
+                if (_isMapReady && AppSettings().showGrid)
+                  const MapGridLayer(),
 
-                  return Polyline(
-                    points: track,
-                    strokeWidth: AppSettings().trackWidth, 
-                    color: style.color.withOpacity(isOnline ? 0.6 : 0.3),
-                  );
-                }).where((p) => p.points.length > 1).toList(), 
-              ),
-              
-              IgnorePointer(
-                ignoring: _activeTool != DrawingTool.view,
-                child: MarkerLayer(
-                  markers: nodes.map((node) {
+                const MapDrawingLayer(),
+
+                if (widget.isOfflineSelectMode && _regionDragStart != null && _regionDragCurrent != null)
+                  PolygonLayer(
+                    polygons: [
+                      Polygon(
+                        points: [
+                          _regionDragStart!,
+                          LatLng(_regionDragStart!.latitude, _regionDragCurrent!.longitude),
+                          _regionDragCurrent!,
+                          LatLng(_regionDragCurrent!.latitude, _regionDragStart!.longitude),
+                        ],
+                        color: Colors.blue.withOpacity(0.3),
+                        borderColor: Colors.blue,
+                        borderStrokeWidth: 2.0,
+                      )
+                    ],
+                  ),
+
+                if (_currentDrawingLinePath.length > 1 && !widget.isOfflineSelectMode)
+                  PolylineLayer(
+                    polylines: [
+                      Polyline(
+                        points: _currentDrawingLinePath,
+                        strokeWidth: DrawingManager().lastLineWidth,
+                        color: Color(int.parse(DrawingManager().lastLineColorHex.replaceFirst('#', '0xFF'))).withOpacity(0.7),
+                      ),
+                    ],
+                  ),
+                  
+                PolylineLayer(
+                  polylines: nodes.map((node) {
                     final isMe = node.nodeId == myId;
                     final isOnline = isMe ? true : (now - node.lastSeenTimeMs) <= timeoutMs;
+                    final style = MarkerStyleManager.getStyle(role: node.role, isMe: isMe, isOnline: isOnline);
                     
-                    final style = MarkerStyleManager.getStyle(
-                      role: node.role,
-                      isMe: isMe,
-                      isOnline: isOnline,
-                    );
+                    final track = node.getRecentTrack(AppSettings().trackTimeMs);
 
-                    return Marker(
-                      point: LatLng(node.lat, node.lon),
-                      width: 120, 
-                      height: 80, 
-                      child: GestureDetector(
-                        onTap: () {
-                          showModalBottomSheet(
-                            context: context,
-                            isScrollControlled: true,
-                            shape: const RoundedRectangleBorder(
-                              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                            ),
-                            builder: (context) => NodeDetailsSheet(
-                              node: node,
-                              isMe: isMe,
-                              roleName: _getRoleName(node.role),
-                              isOnline: isOnline,
-                            ),
-                          );
-                        },
-                        child: Opacity(
-                          opacity: style.opacity,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                decoration: const BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(color: Colors.black26, blurRadius: 3, offset: Offset(0, 2))
-                                  ],
-                                ),
-                                padding: const EdgeInsets.all(6),
-                                child: Icon(style.icon, color: style.color, size: 28),
+                    return Polyline(
+                      points: track,
+                      strokeWidth: AppSettings().trackWidth, 
+                      color: style.color.withOpacity(isOnline ? 0.6 : 0.3),
+                    );
+                  }).where((p) => p.points.length > 1).toList(), 
+                ),
+                
+                IgnorePointer(
+                  ignoring: _activeTool != DrawingTool.view || widget.isOfflineSelectMode,
+                  child: MarkerLayer(
+                    markers: nodes.map((node) {
+                      final isMe = node.nodeId == myId;
+                      final isOnline = isMe ? true : (now - node.lastSeenTimeMs) <= timeoutMs;
+                      
+                      final style = MarkerStyleManager.getStyle(
+                        role: node.role,
+                        isMe: isMe,
+                        isOnline: isOnline,
+                      );
+
+                      return Marker(
+                        point: LatLng(node.lat, node.lon),
+                        width: 120, 
+                        height: 80, 
+                        child: GestureDetector(
+                          onTap: () {
+                            showModalBottomSheet(
+                              context: context,
+                              isScrollControlled: true,
+                              shape: const RoundedRectangleBorder(
+                                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                               ),
-                              const SizedBox(height: 2),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.85),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: Colors.black12),
-                                ),
-                                child: Text(
-                                  node.nodeName,
-                                  style: const TextStyle(
-                                    fontSize: 11, 
-                                    fontWeight: FontWeight.bold, 
-                                    color: Colors.black87
+                              builder: (context) => NodeDetailsSheet(
+                                node: node,
+                                isMe: isMe,
+                                roleName: _getRoleName(node.role),
+                                isOnline: isOnline,
+                              ),
+                            );
+                          },
+                          child: Opacity(
+                            opacity: style.opacity,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  decoration: const BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(color: Colors.black26, blurRadius: 3, offset: Offset(0, 2))
+                                    ],
                                   ),
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
+                                  padding: const EdgeInsets.all(6),
+                                  child: Icon(style.icon, color: style.color, size: 28),
                                 ),
-                              ),
-                            ],
+                                const SizedBox(height: 2),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.85),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: Colors.black12),
+                                  ),
+                                  child: Text(
+                                    node.nodeName,
+                                    style: const TextStyle(
+                                      fontSize: 11, 
+                                      fontWeight: FontWeight.bold, 
+                                      color: Colors.black87
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  }).toList(),
+                      );
+                    }).toList(),
+                  ),
                 ),
-              ),
-              
-              const Align(
-                alignment: Alignment.bottomLeft,
-                child: MapScaleBar(),
-              ),
-              const Align(
-                alignment: Alignment.topRight,
-                child: SafeArea(child: MapCompassWidget()),
-              ),
+                
+                const Align(
+                  alignment: Alignment.bottomLeft,
+                  child: MapScaleBar(),
+                ),
+                
+                if (!widget.isOfflineSelectMode)
+                  const Align(
+                    alignment: Alignment.topRight,
+                    child: SafeArea(child: MapCompassWidget()),
+                  ),
 
-              if (AppSettings().showDrawingToolbar)
-                Align(
-                  alignment: Alignment.topLeft,
-                  child: SafeArea(
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 16.0, left: 16.0),
-                      child: DrawingToolbar(
-                        activeTool: _activeTool,
-                        onToolSelected: (tool) {
-                          final previousTool = _activeTool;
-                          setState(() {
-                            _activeTool = tool;
-                          });
-                          
-                          if (previousTool == DrawingTool.line && tool != DrawingTool.line) {
-                            _processLineCompletion(tool);
-                          }
-                        },
+                if (widget.isOfflineSelectMode)
+                  Align(
+                    alignment: Alignment.topLeft,
+                    child: SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 16.0, left: 16.0),
+                        child: _buildOfflineRegionToolbar(),
+                      ),
+                    ),
+                  )
+                else if (AppSettings().showDrawingToolbar)
+                  Align(
+                    alignment: Alignment.topLeft,
+                    child: SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 16.0, left: 16.0),
+                        child: DrawingToolbar(
+                          activeTool: _activeTool,
+                          onToolSelected: (tool) {
+                            final previousTool = _activeTool;
+                            setState(() {
+                              _activeTool = tool;
+                            });
+                            
+                            if (previousTool == DrawingTool.line && tool != DrawingTool.line) {
+                              _processLineCompletion(tool);
+                            }
+                          },
+                        ),
                       ),
                     ),
                   ),
-                ),
-            ],
-          );
-        },
+              ],
+            );
+          },
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {

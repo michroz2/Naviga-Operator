@@ -1,13 +1,12 @@
 /*
  * Файл: drawing_models.dart
- * Версия: 1.36.3
- * Описание: Модель данных для тактической разметки. 
- * Исправление: Перевод базового класса на именованные параметры для совместимости с конструкторами Dart 2.17+.
+ * Версия: 1.38.4
+ * Описание: Модели данных для тактической разметки и объектов на карте.
  */
 
 import 'package:latlong2/latlong.dart';
 
-enum TacticalType { point, line }
+enum TacticalType { point, line, region }
 
 abstract class TacticalElement {
   final String id;
@@ -16,7 +15,6 @@ abstract class TacticalElement {
   final String description;
   final String colorHex;
 
-  // Используем именованные параметры
   TacticalElement({
     required this.id,
     required this.type,
@@ -45,15 +43,15 @@ class TacticalPoint extends TacticalElement {
 
   @override
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'type': TacticalType.point.index,
-    'lat': lat,
-    'lon': lon,
-    'label': label,
-    'description': description,
-    'colorHex': colorHex,
-    'iconKey': iconKey,
+    'id': id, 'type': 'point', 'label': label, 'description': description,
+    'colorHex': colorHex, 'lat': lat, 'lon': lon, 'iconKey': iconKey,
   };
+
+  factory TacticalPoint.fromJson(Map<String, dynamic> json) => TacticalPoint(
+    id: json['id'], lat: json['lat'], lon: json['lon'],
+    label: json['label'], description: json['description'],
+    colorHex: json['colorHex'], iconKey: json['iconKey'],
+  );
 }
 
 class TacticalLine extends TacticalElement {
@@ -62,21 +60,61 @@ class TacticalLine extends TacticalElement {
 
   TacticalLine({
     required super.id,
+    required this.path,
     required super.label,
     required super.description,
     required super.colorHex,
-    required this.path,
     required this.width,
   }) : super(type: TacticalType.line);
 
   @override
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'type': TacticalType.line.index,
-    'label': label,
-    'description': description,
-    'colorHex': colorHex,
-    'width': width,
+    'id': id, 'type': 'line', 'label': label, 'description': description,
+    'colorHex': colorHex, 'width': width,
     'path': path.map((p) => {'lat': p.latitude, 'lon': p.longitude}).toList(),
   };
+
+  factory TacticalLine.fromJson(Map<String, dynamic> json) => TacticalLine(
+    id: json['id'],
+    label: json['label'], description: json['description'],
+    colorHex: json['colorHex'], width: json['width']?.toDouble() ?? 3.0,
+    path: (json['path'] as List).map((p) => LatLng(p['lat'], p['lon'])).toList(),
+  );
+}
+
+class TacticalRegion extends TacticalElement {
+  final LatLng topLeft;
+  final LatLng bottomRight;
+
+  TacticalRegion({
+    required super.id,
+    required this.topLeft,
+    required this.bottomRight,
+    required super.label,
+    required super.description,
+    required super.colorHex,
+  }) : super(type: TacticalType.region);
+
+  List<LatLng> get corners => [
+    topLeft,
+    LatLng(topLeft.latitude, bottomRight.longitude),
+    bottomRight,
+    LatLng(bottomRight.latitude, topLeft.longitude),
+  ];
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'id': id, 'type': 'region', 'label': label, 'description': description,
+    'colorHex': colorHex,
+    'topLeft': {'lat': topLeft.latitude, 'lon': topLeft.longitude},
+    'bottomRight': {'lat': bottomRight.latitude, 'lon': bottomRight.longitude},
+  };
+
+  factory TacticalRegion.fromJson(Map<String, dynamic> json) => TacticalRegion(
+    id: json['id'],
+    label: json['label'], description: json['description'],
+    colorHex: json['colorHex'],
+    topLeft: LatLng(json['topLeft']['lat'], json['topLeft']['lon']),
+    bottomRight: LatLng(json['bottomRight']['lat'], json['bottomRight']['lon']),
+  );
 }
