@@ -1,10 +1,12 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.39.2
- * Описание: Главный экран-оркестратор интерактивной карты (после рефакторинга).
+ * Версия: 1.39.7
+ * Описание: Главный экран-оркестратор интерактивной карты.
+ * Изменения: Интеграция плавающего, перемещаемого виджета прогресса оффлайн-загрузки (UC-24).
  */
 
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -23,8 +25,6 @@ import 'map_components/drawing_toolbar.dart';
 import 'map_components/drawing_manager.dart';
 import 'map_components/drawing_models.dart';
 import 'map_components/drawing_layer.dart';
-
-// ИМПОРТЫ РЕФАКТОРИНГА
 import 'map_components/drawing_controller.dart';
 import 'map_components/nodes_layer.dart';
 import 'map_components/region_selection_layer.dart';
@@ -53,6 +53,10 @@ class _MapScreenState extends State<MapScreen> {
   DrawingTool _activeTool = DrawingTool.view;
   List<LatLng> _currentDrawingLinePath = [];
   bool _isRegionDrawingActive = false; 
+
+  // Координаты плавающего виджета загрузки
+  double _downloadWidgetX = 16.0;
+  double _downloadWidgetY = 100.0;
 
   @override
   void initState() {
@@ -121,6 +125,92 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
+  // Визуализация плавающего виджета загрузки
+  Widget _buildDraggableDownloadWidget() {
+    return ListenableBuilder(
+      listenable: OfflineMapManager(),
+      builder: (context, child) {
+        final manager = OfflineMapManager();
+        if (!manager.isDownloading) return const SizedBox.shrink();
+
+        final colorScheme = Theme.of(context).colorScheme;
+
+        return Positioned(
+          left: _downloadWidgetX,
+          top: _downloadWidgetY,
+          child: GestureDetector(
+            onPanUpdate: (details) {
+              setState(() {
+                // Простое ограничение, чтобы не утащить за левый/верхний край экрана
+                _downloadWidgetX = math.max(0, _downloadWidgetX + details.delta.dx);
+                _downloadWidgetY = math.max(0, _downloadWidgetY + details.delta.dy);
+              });
+            },
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: 260,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: colorScheme.surface.withOpacity(0.95),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: const [
+                    BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))
+                  ],
+                  border: Border.all(color: colorScheme.outlineVariant),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.cloud_download, size: 20, color: colorScheme.primary),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            manager.currentRegionName,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        InkWell(
+                          onTap: () => manager.cancelDownload(),
+                          child: Icon(Icons.cancel, size: 20, color: colorScheme.error),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    LinearProgressIndicator(
+                      value: manager.progressPercentage / 100.0,
+                      backgroundColor: colorScheme.surfaceVariant,
+                      color: colorScheme.primary,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '${manager.downloadedTiles} / ${manager.totalTiles} тайлов',
+                          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                        ),
+                        Text(
+                          '${manager.progressPercentage.toStringAsFixed(1)}%',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -128,144 +218,152 @@ class _MapScreenState extends State<MapScreen> {
         title: Text(widget.isOfflineSelectMode ? 'Выбор оффлайн-карты' : 'Naviga Map'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
-      body: ListenableBuilder(
-        listenable: Listenable.merge([
-          _bleService.nodeDatabase,
-          _bleService.identityNotifier,
-          DrawingManager(), 
-        ]),
-        builder: (context, child) {
-          final nodes = _bleService.nodeDatabase.nodes.values.where((n) => n.hasValidGps);
-          final myId = _bleService.identityNotifier.value?.myNodeId;
+      // Оборачиваем тело в Stack, чтобы плавающий виджет был поверх карты
+      body: Stack(
+        children: [
+          ListenableBuilder(
+            listenable: Listenable.merge([
+              _bleService.nodeDatabase,
+              _bleService.identityNotifier,
+              DrawingManager(), 
+            ]),
+            builder: (context, child) {
+              final nodes = _bleService.nodeDatabase.nodes.values.where((n) => n.hasValidGps);
+              final myId = _bleService.identityNotifier.value?.myNodeId;
 
-          LatLng initialCenter = const LatLng(0, 0);
-          if (nodes.isNotEmpty) {
-            final myNode = nodes.firstWhere((n) => n.nodeId == myId, orElse: () => nodes.first);
-            initialCenter = LatLng(myNode.lat, myNode.lon);
-          }
+              LatLng initialCenter = const LatLng(0, 0);
+              if (nodes.isNotEmpty) {
+                final myNode = nodes.firstWhere((n) => n.nodeId == myId, orElse: () => nodes.first);
+                initialCenter = LatLng(myNode.lat, myNode.lon);
+              }
 
-          int interactiveFlags = InteractiveFlag.all;
-          if (widget.isOfflineSelectMode) {
-            interactiveFlags = interactiveFlags & ~InteractiveFlag.rotate;
-            if (_isRegionDrawingActive) interactiveFlags = interactiveFlags & ~InteractiveFlag.drag; 
-          } else if (AppSettings().compassMode != 1) {
-            interactiveFlags = interactiveFlags & ~InteractiveFlag.rotate;
-          }
+              int interactiveFlags = InteractiveFlag.all;
+              if (widget.isOfflineSelectMode) {
+                interactiveFlags = interactiveFlags & ~InteractiveFlag.rotate;
+                if (_isRegionDrawingActive) interactiveFlags = interactiveFlags & ~InteractiveFlag.drag; 
+              } else if (AppSettings().compassMode != 1) {
+                interactiveFlags = interactiveFlags & ~InteractiveFlag.rotate;
+              }
 
-          return FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: initialCenter,
-              initialZoom: 15.0,
-              interactionOptions: InteractionOptions(flags: interactiveFlags),
-              onTap: (tapPosition, latLng) {
-                _drawingController.handleDrawingTap(
-                  context: context,
-                  tappedPoint: latLng,
-                  camera: _mapController.camera,
-                  activeTool: _activeTool,
-                  currentDrawingLinePath: _currentDrawingLinePath,
-                  onPathUpdated: () => setState(() {}),
-                );
-              },
-              onMapReady: () {
-                _isMapReady = true;
-                _applyCompassMode();
-                setState(() {});
-              },
-            ),
-            children: [
-              if (AppSettings().invertMapColors)
-                ColorFiltered(
-                  colorFilter: const ColorFilter.matrix(<double>[
-                    -1, 0, 0, 0, 255, 0, -1, 0, 0, 255, 0, 0, -1, 0, 255, 0, 0, 0, 1, 0,
-                  ]),
-                  child: TileLayer(
-                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.michroz2.naviga_operator',
-                    tileProvider: FMTCStore('NavigaStore').getTileProvider(), 
-                  ),
-                )
-              else
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.michroz2.naviga_operator',
-                  tileProvider: FMTCStore('NavigaStore').getTileProvider(), 
-                ),
-              
-              if (_isMapReady && AppSettings().showGrid) const MapGridLayer(),
-
-              const MapDrawingLayer(),
-
-              if (widget.isOfflineSelectMode && _isRegionDrawingActive)
-                RegionSelectionLayer(
-                  mapController: _mapController,
-                  isMapReady: _isMapReady,
-                  onCancel: () => setState(() => _isRegionDrawingActive = false),
-                  onRegionSelected: (newRegion) {
-                    DrawingManager().addElement(newRegion);
-                    OfflineMapManager().downloadRegion(newRegion);
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Загрузка региона "${newRegion.label}" запущена в фоне'))
-                      );
-                    }
-                    setState(() => _isRegionDrawingActive = false);
+              return FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: initialCenter,
+                  initialZoom: 15.0,
+                  interactionOptions: InteractionOptions(flags: interactiveFlags),
+                  onTap: (tapPosition, latLng) {
+                    _drawingController.handleDrawingTap(
+                      context: context,
+                      tappedPoint: latLng,
+                      camera: _mapController.camera,
+                      activeTool: _activeTool,
+                      currentDrawingLinePath: _currentDrawingLinePath,
+                      onPathUpdated: () => setState(() {}),
+                    );
+                  },
+                  onMapReady: () {
+                    _isMapReady = true;
+                    _applyCompassMode();
+                    setState(() {});
                   },
                 ),
-
-              if (_currentDrawingLinePath.length > 1 && !widget.isOfflineSelectMode)
-                PolylineLayer(
-                  polylines: [
-                    Polyline(
-                      points: _currentDrawingLinePath,
-                      strokeWidth: DrawingManager().lastLineWidth,
-                      color: Color(int.parse(DrawingManager().lastLineColorHex.replaceFirst('#', '0xFF'))).withOpacity(0.7),
+                children: [
+                  if (AppSettings().invertMapColors)
+                    ColorFiltered(
+                      colorFilter: const ColorFilter.matrix(<double>[
+                        -1, 0, 0, 0, 255, 0, -1, 0, 0, 255, 0, 0, -1, 0, 255, 0, 0, 0, 1, 0,
+                      ]),
+                      child: TileLayer(
+                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.michroz2.naviga_operator',
+                        tileProvider: FMTCStore('NavigaStore').getTileProvider(), 
+                      ),
+                    )
+                  else
+                    TileLayer(
+                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.michroz2.naviga_operator',
+                      tileProvider: FMTCStore('NavigaStore').getTileProvider(), 
                     ),
-                  ],
-                ),
-                
-              NodesLayer(isInteractive: _activeTool == DrawingTool.view && !widget.isOfflineSelectMode),
-              
-              const Align(alignment: Alignment.bottomLeft, child: MapScaleBar()),
-              
-              if (!widget.isOfflineSelectMode)
-                const Align(alignment: Alignment.topRight, child: SafeArea(child: MapCompassWidget())),
+                  
+                  if (_isMapReady && AppSettings().showGrid) const MapGridLayer(),
 
-              if (widget.isOfflineSelectMode)
-                Align(
-                  alignment: Alignment.topLeft,
-                  child: SafeArea(
-                    child: Padding(padding: const EdgeInsets.only(top: 16.0, left: 16.0), child: _buildOfflineRegionToolbar()),
-                  ),
-                )
-              else if (AppSettings().showDrawingToolbar)
-                Align(
-                  alignment: Alignment.topLeft,
-                  child: SafeArea(
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 16.0, left: 16.0),
-                      child: DrawingToolbar(
-                        activeTool: _activeTool,
-                        onToolSelected: (tool) {
-                          final previousTool = _activeTool;
-                          setState(() => _activeTool = tool);
-                          
-                          if (previousTool == DrawingTool.line && tool != DrawingTool.line) {
-                            _drawingController.processLineCompletion(
-                              context: context,
-                              currentDrawingLinePath: _currentDrawingLinePath,
-                              onPathCleared: () => setState(() => _currentDrawingLinePath.clear()),
-                            );
-                          }
-                        },
+                  const MapDrawingLayer(),
+
+                  if (widget.isOfflineSelectMode && _isRegionDrawingActive)
+                    RegionSelectionLayer(
+                      mapController: _mapController,
+                      isMapReady: _isMapReady,
+                      onCancel: () => setState(() => _isRegionDrawingActive = false),
+                      onRegionSelected: (newRegion) {
+                        DrawingManager().addElement(newRegion);
+                        OfflineMapManager().downloadRegion(newRegion);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Загрузка региона "${newRegion.label}" запущена в фоне'))
+                          );
+                        }
+                        setState(() => _isRegionDrawingActive = false);
+                      },
+                    ),
+
+                  if (_currentDrawingLinePath.length > 1 && !widget.isOfflineSelectMode)
+                    PolylineLayer(
+                      polylines: [
+                        Polyline(
+                          points: _currentDrawingLinePath,
+                          strokeWidth: DrawingManager().lastLineWidth,
+                          color: Color(int.parse(DrawingManager().lastLineColorHex.replaceFirst('#', '0xFF'))).withOpacity(0.7),
+                        ),
+                      ],
+                    ),
+                    
+                  NodesLayer(isInteractive: _activeTool == DrawingTool.view && !widget.isOfflineSelectMode),
+                  
+                  const Align(alignment: Alignment.bottomLeft, child: MapScaleBar()),
+                  
+                  if (!widget.isOfflineSelectMode)
+                    const Align(alignment: Alignment.topRight, child: SafeArea(child: MapCompassWidget())),
+
+                  if (widget.isOfflineSelectMode)
+                    Align(
+                      alignment: Alignment.topLeft,
+                      child: SafeArea(
+                        child: Padding(padding: const EdgeInsets.only(top: 16.0, left: 16.0), child: _buildOfflineRegionToolbar()),
+                      ),
+                    )
+                  else if (AppSettings().showDrawingToolbar)
+                    Align(
+                      alignment: Alignment.topLeft,
+                      child: SafeArea(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 16.0, left: 16.0),
+                          child: DrawingToolbar(
+                            activeTool: _activeTool,
+                            onToolSelected: (tool) {
+                              final previousTool = _activeTool;
+                              setState(() => _activeTool = tool);
+                              
+                              if (previousTool == DrawingTool.line && tool != DrawingTool.line) {
+                                _drawingController.processLineCompletion(
+                                  context: context,
+                                  currentDrawingLinePath: _currentDrawingLinePath,
+                                  onPathCleared: () => setState(() => _currentDrawingLinePath.clear()),
+                                );
+                              }
+                            },
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-            ],
-          );
-        },
+                ],
+              );
+            },
+          ),
+          
+          // Виджет прогресса оффлайн-загрузки
+          _buildDraggableDownloadWidget(),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {

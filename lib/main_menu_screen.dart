@@ -1,7 +1,8 @@
 /*
  * Файл: main_menu_screen.dart
- * Версия: 1.38.4
+ * Версия: 1.39.7
  * Описание: Главный дашборд управления Донглом.
+ * Изменения: Карточка Оффлайн-карт теперь реагирует на состояние фоновой загрузки (UC-24).
  */
 
 import 'dart:convert';
@@ -17,6 +18,7 @@ import 'settings_screen.dart';
 import 'exchange_screen.dart'; 
 
 import 'map_components/drawing_manager.dart';
+import 'offline_map_manager.dart'; // ИЗМЕНЕНИЕ: Добавлен импорт
 
 class MainMenuScreen extends StatefulWidget {
   const MainMenuScreen({super.key});
@@ -354,33 +356,54 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               ),
               const SizedBox(height: 10),
 
-              Card(
-                elevation: 4,
-                child: InkWell(
-                  onTap: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (context) => const MapScreen(isOfflineSelectMode: true)));
-                  },
-                  borderRadius: BorderRadius.circular(12),
-                  child: const Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: Row(
-                      children: [
-                        Icon(Icons.download_for_offline, color: Colors.blueGrey, size: 32),
-                        SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Оффлайн-карты', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                              Text('Выбор региона для загрузки', style: TextStyle(fontSize: 14, color: Colors.grey)),
-                            ],
-                          ),
+              // ИЗМЕНЕНИЕ 1.39.7: Динамическое состояние загрузки на дашборде
+              ListenableBuilder(
+                listenable: OfflineMapManager(),
+                builder: (context, child) {
+                  final manager = OfflineMapManager();
+                  
+                  return Card(
+                    elevation: 4,
+                    color: manager.isDownloading ? colorScheme.primaryContainer.withOpacity(0.5) : null,
+                    child: InkWell(
+                      onTap: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const MapScreen(isOfflineSelectMode: true)));
+                      },
+                      borderRadius: BorderRadius.circular(12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Row(
+                          children: [
+                            Icon(Icons.download_for_offline, color: Colors.blueGrey, size: 32),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Оффлайн-карты', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                  if (manager.isDownloading) ...[
+                                    const SizedBox(height: 4),
+                                    Text('Скачивание "${manager.currentRegionName}": ${manager.progressPercentage.toStringAsFixed(1)}%', 
+                                      style: TextStyle(fontSize: 14, color: colorScheme.primary, fontWeight: FontWeight.bold)),
+                                    const SizedBox(height: 4),
+                                    LinearProgressIndicator(
+                                      value: manager.progressPercentage / 100.0,
+                                      backgroundColor: colorScheme.surfaceVariant,
+                                      color: colorScheme.primary,
+                                    ),
+                                  ] else ...[
+                                    const Text('Выбор региона для загрузки', style: TextStyle(fontSize: 14, color: Colors.grey)),
+                                  ]
+                                ],
+                              ),
+                            ),
+                            const Icon(Icons.chevron_right, color: Colors.grey),
+                          ],
                         ),
-                        Icon(Icons.chevron_right, color: Colors.grey),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
               const SizedBox(height: 10),
 
