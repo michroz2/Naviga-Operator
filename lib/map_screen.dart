@@ -1,11 +1,10 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.38.10
+ * Версия: 1.39.0
  * Описание: Главный экран-оркестратор интерактивной карты с поддержкой тактической разметки.
  * Изменения: 
- * - Замена GestureDetector на низкоуровневый Listener для мгновенного перехвата касаний 
- * (обход Gesture Arena). Это решает проблему "игнорирования первого свайпа".
- * - Отключен сброс инструмента при слишком коротком свайпе для улучшения UX.
+ * - Шаг 4: Интеграция OfflineMapManager. Добавлен импорт и вызов запуска фоновой загрузки 
+ * после успешного создания региона.
  */
 
 import 'dart:async';
@@ -20,6 +19,7 @@ import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
 import 'ble_service.dart';
 import 'roster_screen.dart'; 
 import 'app_settings.dart'; 
+import 'offline_map_manager.dart'; // ИНТЕГРАЦИЯ: Импорт сервиса загрузки
 
 import 'map_components/map_marker_manager.dart';
 import 'map_components/map_scale_bar.dart';
@@ -402,7 +402,6 @@ class _MapScreenState extends State<MapScreen> {
                   ],
                 ),
 
-              // ИСПРАВЛЕНИЕ 1.38.10: Замена GestureDetector на Listener для мгновенного сырого перехвата
               if (widget.isOfflineSelectMode && _isRegionDrawingActive)
                 Positioned.fill(
                   child: Listener(
@@ -436,7 +435,6 @@ class _MapScreenState extends State<MapScreen> {
                         setState(() {
                           _regionDragStart = null;
                           _regionDragCurrent = null;
-                          // Убрано отключение _isRegionDrawingActive, чтобы не сбрасывать крестик при коротком клике
                         });
                         return;
                       }
@@ -466,9 +464,12 @@ class _MapScreenState extends State<MapScreen> {
                         );
                         DrawingManager().addElement(newRegion);
                         
+                        // ИНТЕГРАЦИЯ: Запуск фоновой загрузки через менеджер
+                        OfflineMapManager().downloadRegion(newRegion);
+                        
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Регион $regionName добавлен. Запуск загрузки...'))
+                            SnackBar(content: Text('Загрузка региона "$regionName" запущена в фоне'))
                           );
                         }
                         
@@ -485,7 +486,6 @@ class _MapScreenState extends State<MapScreen> {
                         });
                       }
                     },
-                    // Обработка прерываний системы (например, входящий звонок)
                     onPointerCancel: (event) {
                       setState(() {
                         _regionDragStart = null;
