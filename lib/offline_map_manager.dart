@@ -1,8 +1,7 @@
 /*
  * Файл: offline_map_manager.dart
- * Версия: 1.39.8
- * Описание: Сервис фоновой загрузки оффлайн-тайлов через FMTC с трансляцией состояния.
- * Изменения: Внедрена изоляция инстансов загрузки (динамический инкрементальный instanceId) для предотвращения коллизий ("Bad state: ID 0 already exists"). Исправлен порядок отмены скачивания.
+ * Версия: 1.39.9
+ * Изменения: Добавлено сохранение ID текущего региона и его автоматическое удаление с карты (через DrawingManager) при отмене загрузки.
  */
 
 import 'dart:async';
@@ -11,29 +10,26 @@ import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'map_components/drawing_models.dart';
+import 'map_components/drawing_manager.dart'; // ИЗМЕНЕНИЕ: Доступ к разметке
 
 class OfflineMapManager extends ChangeNotifier {
-  // Singleton архитектура для доступа из любой точки UI
   static final OfflineMapManager _instance = OfflineMapManager._internal();
   factory OfflineMapManager() => _instance;
   OfflineMapManager._internal();
 
-  // Состояние загрузки
   bool isDownloading = false;
   double progressPercentage = 0.0;
   int downloadedTiles = 0;
   int totalTiles = 0;
   String currentRegionName = '';
+  String? _currentRegionId; // ИЗМЕНЕНИЕ: ID для связи с разметкой
 
   StreamSubscription<DownloadProgress>? _downloadSubscription;
-  
-  // Статический счетчик для генерации коротких уникальных ID сессий
   static int _instanceCounter = 1;
   int? _currentInstanceId;
 
-  // Запуск загрузки региона
   Future<void> downloadRegion(TacticalRegion region) async {
-    if (isDownloading) return; // Защита от дублирующего запуска
+    if (isDownloading) return;
 
     final store = FMTCStore('NavigaStore');
     
@@ -51,9 +47,9 @@ class OfflineMapManager extends ChangeNotifier {
     );
 
     try {
-      // Инициализация стейта и нового уникального ID
       isDownloading = true;
       currentRegionName = region.label;
+      _currentRegionId = region.id; // Запоминаем ID
       progressPercentage = 0.0;
       downloadedTiles = 0;
       totalTiles = 0;
@@ -62,7 +58,7 @@ class OfflineMapManager extends ChangeNotifier {
 
       final downloadStream = store.download.startForeground(
         region: downloadableRegion,
-        instanceId: _currentInstanceId!, // Явная изоляция процесса
+        instanceId: _currentInstanceId!,
       );
       
       _downloadSubscription = downloadStream.listen(
@@ -88,19 +84,21 @@ class OfflineMapManager extends ChangeNotifier {
     }
   }
 
-  // Принудительная отмена скачивания
   void cancelDownload() {
     if (!isDownloading || _currentInstanceId == null) return;
     
     try {
-      // ИСПРАВЛЕНИЕ: Сначала корректно глушим движок с указанием конкретного ID инстанса
       FMTCStore('NavigaStore').download.cancel(instanceId: _currentInstanceId!);
     } catch (e) {
       print('Ошибка при отмене загрузки FMTC: $e');
     }
     
-    // ИСПРАВЛЕНИЕ: Только после этого обрываем прослушивание Stream
     _downloadSubscription?.cancel();
+    
+    // ИЗМЕНЕНИЕ: Удаляем рамку региона с карты при отмене
+    if (_currentRegionId != null) {
+      DrawingManager().removeElement(_currentRegionId!);
+    }
     
     _resetState();
   }
@@ -111,6 +109,7 @@ class OfflineMapManager extends ChangeNotifier {
     downloadedTiles = 0;
     totalTiles = 0;
     currentRegionName = '';
+    _currentRegionId = null;
     _downloadSubscription = null;
     _currentInstanceId = null;
     notifyListeners();

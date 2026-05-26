@@ -1,7 +1,7 @@
 /*
  * Файл: drawing_models.dart
- * Версия: 1.38.4
- * Описание: Модели данных для тактической разметки и объектов на карте.
+ * Версия: 1.39.9
+ * Изменения: В TacticalRegion добавлены стили границ (borderWidth, isDashed) и геттер borderPath с линейной интерполяцией граней для обеспечения кликабельности периметра.
  */
 
 import 'package:latlong2/latlong.dart';
@@ -85,6 +85,8 @@ class TacticalLine extends TacticalElement {
 class TacticalRegion extends TacticalElement {
   final LatLng topLeft;
   final LatLng bottomRight;
+  final double borderWidth;
+  final bool isDashed;
 
   TacticalRegion({
     required super.id,
@@ -93,14 +95,37 @@ class TacticalRegion extends TacticalElement {
     required super.label,
     required super.description,
     required super.colorHex,
+    this.borderWidth = 3.0,
+    this.isDashed = true,
   }) : super(type: TacticalType.region);
 
-  List<LatLng> get corners => [
-    topLeft,
-    LatLng(topLeft.latitude, bottomRight.longitude),
-    bottomRight,
-    LatLng(bottomRight.latitude, topLeft.longitude),
-  ];
+  // ИЗМЕНЕНИЕ: Формируем замкнутый контур с интерполяцией (по 10 точек на грань).
+  // Это позволяет алгоритму вычисления дистанции до вершин корректно обрабатывать тапы по всему периметру.
+  List<LatLng> get borderPath {
+    final corners = [
+      topLeft,
+      LatLng(topLeft.latitude, bottomRight.longitude),
+      bottomRight,
+      LatLng(bottomRight.latitude, topLeft.longitude),
+      topLeft
+    ];
+    
+    List<LatLng> path = [];
+    for (int i = 0; i < corners.length - 1; i++) {
+      final p1 = corners[i];
+      final p2 = corners[i+1];
+      path.add(p1);
+      // Добавляем промежуточные точки
+      for (int j = 1; j < 10; j++) {
+        path.add(LatLng(
+          p1.latitude + (p2.latitude - p1.latitude) * (j / 10),
+          p1.longitude + (p2.longitude - p1.longitude) * (j / 10),
+        ));
+      }
+    }
+    path.add(corners.last);
+    return path;
+  }
 
   @override
   Map<String, dynamic> toJson() => {
@@ -108,6 +133,8 @@ class TacticalRegion extends TacticalElement {
     'colorHex': colorHex,
     'topLeft': {'lat': topLeft.latitude, 'lon': topLeft.longitude},
     'bottomRight': {'lat': bottomRight.latitude, 'lon': bottomRight.longitude},
+    'borderWidth': borderWidth,
+    'isDashed': isDashed,
   };
 
   factory TacticalRegion.fromJson(Map<String, dynamic> json) => TacticalRegion(
@@ -116,5 +143,7 @@ class TacticalRegion extends TacticalElement {
     colorHex: json['colorHex'],
     topLeft: LatLng(json['topLeft']['lat'], json['topLeft']['lon']),
     bottomRight: LatLng(json['bottomRight']['lat'], json['bottomRight']['lon']),
+    borderWidth: json['borderWidth']?.toDouble() ?? 3.0,
+    isDashed: json['isDashed'] ?? true,
   );
 }

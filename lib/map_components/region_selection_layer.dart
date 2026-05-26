@@ -1,7 +1,7 @@
 /*
  * Файл: region_selection_layer.dart
- * Версия: 1.39.2
- * Описание: Интерактивный слой для выделения региона оффлайн-карты.
+ * Версия: 1.39.9
+ * Изменения: При инициализации TacticalRegion передаются дефолтные параметры стиля границы (isDashed, borderWidth).
  */
 
 import 'dart:math' as math;
@@ -112,6 +112,8 @@ class _RegionSelectionLayerState extends State<RegionSelectionLayer> {
                   label: regionName,
                   description: 'Оффлайн карта',
                   colorHex: '#2196F3',
+                  borderWidth: 3.0, // ИЗМЕНЕНИЕ: Дефолтная толщина
+                  isDashed: true,   // ИЗМЕНЕНИЕ: Дефолтный стиль (пунктир)
                 );
                 
                 widget.onRegionSelected(newRegion);

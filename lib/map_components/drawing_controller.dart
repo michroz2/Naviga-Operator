@@ -1,8 +1,7 @@
 /*
  * Файл: drawing_controller.dart
- * Версия: 1.39.3
- * Описание: Контроллер обработки жестов рисования и выделения объектов на карте.
- * Изменения: Добавлен отсутствующий импорт drawing_toolbar.dart для доступа к типу DrawingTool.
+ * Версия: 1.39.9
+ * Изменения: Добавлена логика Hit-Test для TacticalRegion. Тапы определяются по интерполированному контуру borderPath, позволяя корректно взаимодействовать с периметром прямоугольника.
  */
 
 import 'dart:math' as math;
@@ -14,7 +13,7 @@ import '../ble_service.dart';
 import 'drawing_manager.dart';
 import 'drawing_models.dart';
 import 'drawing_menu_sheet.dart';
-import 'drawing_toolbar.dart'; // ИСПРАВЛЕНИЕ: Добавлен импорт для DrawingTool
+import 'drawing_toolbar.dart'; 
 
 class DrawingController {
   final BleService _bleService = BleService();
@@ -38,6 +37,9 @@ class DrawingController {
     TacticalLine? closestLine;
     double minLineDistMeters = searchRadiusMeters;
 
+    TacticalRegion? closestRegion;
+    double minRegionDistMeters = searchRadiusMeters;
+
     for (var element in manager.elements) {
       if (element is TacticalPoint) {
         final dist = distanceCalculator.distance(tappedPoint, LatLng(element.lat, element.lon));
@@ -52,6 +54,15 @@ class DrawingController {
           if (dist < minLineDistMeters) {
             minLineDistMeters = dist;
             closestLine = element;
+          }
+        }
+      } else if (element is TacticalRegion) {
+        // ИЗМЕНЕНИЕ: Обработка попаданий в границы региона. Используется borderPath с плотными точками.
+        for (var latLng in element.borderPath) {
+          final dist = distanceCalculator.distance(tappedPoint, latLng);
+          if (dist < minRegionDistMeters) {
+            minRegionDistMeters = dist;
+            closestRegion = element;
           }
         }
       }
@@ -97,7 +108,18 @@ class DrawingController {
       return; 
     }
 
-    TacticalElement? closest = closestPoint ?? closestLine;
+    // Определяем абсолютно ближайший элемент из всех категорий
+    TacticalElement? closest = closestPoint;
+    double minDist = minPointDistMeters;
+
+    if (minLineDistMeters < minDist) {
+      closest = closestLine;
+      minDist = minLineDistMeters;
+    }
+    if (minRegionDistMeters < minDist) {
+      closest = closestRegion;
+      minDist = minRegionDistMeters;
+    }
 
     if (closest != null) {
       if (activeTool == DrawingTool.view) {
@@ -107,7 +129,7 @@ class DrawingController {
           shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           ),
-          builder: (_) => DrawingInfoSheet(element: closest),
+          builder: (_) => DrawingInfoSheet(element: closest!),
         );
       } else if (activeTool == DrawingTool.select) {
         final attrs = await showModalBottomSheet<Map<String, dynamic>>(
@@ -115,7 +137,7 @@ class DrawingController {
           isScrollControlled: true,
           builder: (_) => DrawingMenuSheet(
             existingElement: closest,
-            targetType: closest.type,
+            targetType: closest!.type,
           ),
         );
 
@@ -131,6 +153,12 @@ class DrawingController {
               id: closest.id, path: closest.path,
               label: attrs['label'], description: attrs['description'],
               colorHex: attrs['colorHex'], width: attrs['lineWidth'],
+            ));
+          } else if (closest is TacticalRegion) {
+            manager.updateElement(TacticalRegion(
+              id: closest.id, topLeft: closest.topLeft, bottomRight: closest.bottomRight,
+              label: attrs['label'], description: attrs['description'],
+              colorHex: attrs['colorHex'], borderWidth: attrs['lineWidth'], isDashed: closest.isDashed,
             ));
           }
         }

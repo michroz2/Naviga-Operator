@@ -1,8 +1,7 @@
 /*
  * Файл: drawing_menu_sheet.dart
- * Версия: 1.36.15
- * Описание: Всплывающее окно (BottomSheet) для настройки атрибутов тактических объектов.
- * Изменения: Палитра расширена до 12 цветов (2 ряда через Wrap), исправлено отображение иконок в тёмной теме.
+ * Версия: 1.39.9
+ * Изменения: Интегрирована поддержка редактирования свойств регионов (цвет рамки, толщина, название). Инфо-окно адаптировано для отображения параметров TacticalRegion.
  */
 
 import 'package:flutter/material.dart';
@@ -32,7 +31,6 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
   late String _currentIconKey;
   late double _currentLineWidth;
 
-  // ИЗМЕНЕНИЕ: Расширенная палитра из 12 наиболее популярных тактических цветов
   final List<String> _palette = [
     '#FF0000', '#0000FF', '#008000', '#FFA500', '#000000', '#FFFFFF',
     '#FFFF00', '#800080', '#00FFFF', '#FF00FF', '#8B4513', '#808080'
@@ -48,8 +46,10 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
     if (el == null) {
       if (widget.targetType == TacticalType.point) {
         defaultLabel = 'Точка-${manager.getNextPointNumber()}';
-      } else {
+      } else if (widget.targetType == TacticalType.line) {
         defaultLabel = 'Линия-${manager.getNextLineNumber()}';
+      } else {
+        defaultLabel = 'Регион';
       }
     }
 
@@ -57,10 +57,7 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
     _descController = TextEditingController(text: el?.description ?? '');
 
     if (el == null) {
-      _labelController.selection = TextSelection(
-        baseOffset: 0,
-        extentOffset: _labelController.text.length,
-      );
+      _labelController.selection = TextSelection(baseOffset: 0, extentOffset: _labelController.text.length);
     }
 
     if (widget.targetType == TacticalType.point) {
@@ -72,7 +69,7 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
         _currentIconKey = manager.lastPointIconKey;
       }
       _currentLineWidth = 4.0;
-    } else {
+    } else if (widget.targetType == TacticalType.line) {
       if (el is TacticalLine) {
         _currentColorHex = el.colorHex;
         _currentLineWidth = el.width;
@@ -81,6 +78,16 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
         _currentLineWidth = manager.lastLineWidth;
       }
       _currentIconKey = 'pin';
+    } else if (widget.targetType == TacticalType.region) {
+      // ИЗМЕНЕНИЕ: Инициализация полей для региона (рамка трактуется как линия)
+      if (el is TacticalRegion) {
+        _currentColorHex = el.colorHex;
+        _currentLineWidth = el.borderWidth;
+      } else {
+        _currentColorHex = '#2196F3';
+        _currentLineWidth = 3.0;
+      }
+      _currentIconKey = 'map';
     }
   }
 
@@ -93,7 +100,9 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
 
   void _save() {
     if (_labelController.text.trim().isEmpty) {
-      _labelController.text = widget.targetType == TacticalType.point ? 'Точка' : 'Линия';
+      if (widget.targetType == TacticalType.point) _labelController.text = 'Точка';
+      else if (widget.targetType == TacticalType.line) _labelController.text = 'Линия';
+      else _labelController.text = 'Регион';
     }
 
     if (widget.targetType == TacticalType.point) {
@@ -136,22 +145,14 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
             
             TextField(
               controller: _labelController,
-              decoration: const InputDecoration(
-                labelText: 'Название (Label)',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
+              decoration: const InputDecoration(labelText: 'Название (Label)', border: OutlineInputBorder(), isDense: true),
               autofocus: widget.existingElement == null,
             ),
             const SizedBox(height: 12),
             
             TextField(
               controller: _descController,
-              decoration: const InputDecoration(
-                labelText: 'Описание (опционально)',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
+              decoration: const InputDecoration(labelText: 'Описание (опционально)', border: OutlineInputBorder(), isDense: true),
               maxLines: 1,
             ),
             const SizedBox(height: 16),
@@ -159,16 +160,11 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
             const Text('Цвет:', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             
-            // ИЗМЕНЕНИЕ: Замена Row на Wrap для красивого распределения 12 цветов в два ряда
             Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              alignment: WrapAlignment.start,
+              spacing: 10, runSpacing: 10, alignment: WrapAlignment.start,
               children: _palette.map((hex) {
                 final color = Color(int.parse(hex.replaceFirst('#', '0xFF')));
                 final isSelected = _currentColorHex == hex;
-                
-                // Тонкая кайма для белого цвета в светлой теме, чтобы он не сливался
                 final bool showBorder = hex == '#FFFFFF' && colorScheme.brightness == Brightness.light;
 
                 return GestureDetector(
@@ -176,8 +172,7 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
                   child: Container(
                     width: 38, height: 38,
                     decoration: BoxDecoration(
-                      color: color,
-                      shape: BoxShape.circle,
+                      color: color, shape: BoxShape.circle,
                       border: Border.all(
                         color: isSelected ? colorScheme.primary : (showBorder ? colorScheme.outline : Colors.transparent),
                         width: isSelected ? 3 : 1,
@@ -193,13 +188,8 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
               const Text('Иконка:', style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 6, 
-                  crossAxisSpacing: 14, 
-                  mainAxisSpacing: 10,  
-                ),
+                shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 6, crossAxisSpacing: 14, mainAxisSpacing: 10),
                 itemCount: sortedIcons.length,
                 itemBuilder: (context, index) {
                   final iconItem = sortedIcons[index];
@@ -207,16 +197,12 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
                   return GestureDetector(
                     onTap: () => setState(() => _currentIconKey = iconItem.key),
                     child: Container(
-                      // ИЗМЕНЕНИЕ: Цвета адаптированы под тёмную/светлую тему приложения (onSurface и primaryContainer)
                       decoration: BoxDecoration(
                         color: isSelected ? colorScheme.primaryContainer : Colors.transparent,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: isSelected ? colorScheme.primary : Colors.transparent),
                       ),
-                      child: Icon(
-                        iconItem.data, 
-                        color: isSelected ? colorScheme.onPrimaryContainer : colorScheme.onSurface,
-                      ),
+                      child: Icon(iconItem.data, color: isSelected ? colorScheme.onPrimaryContainer : colorScheme.onSurface),
                     ),
                   );
                 },
@@ -225,7 +211,7 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
 
             if (!isPoint) ...[
               const SizedBox(height: 16),
-              Text('Толщина линии: ${_currentLineWidth.toStringAsFixed(1)}', 
+              Text(widget.targetType == TacticalType.region ? 'Толщина рамки: ${_currentLineWidth.toStringAsFixed(1)}' : 'Толщина линии: ${_currentLineWidth.toStringAsFixed(1)}', 
                    style: const TextStyle(fontWeight: FontWeight.bold)),
               Slider(
                 value: _currentLineWidth,
@@ -238,15 +224,9 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(null),
-                  child: const Text('Отмена'),
-                ),
+                TextButton(onPressed: () => Navigator.of(context).pop(null), child: const Text('Отмена')),
                 const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: _save,
-                  child: const Text('Сохранить'),
-                ),
+                ElevatedButton(onPressed: _save, child: const Text('Сохранить')),
               ],
             ),
           ],
@@ -256,9 +236,6 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
   }
 }
 
-// ============================================================================
-// Информационное окно для режима просмотра (Read-Only)
-// ============================================================================
 class DrawingInfoSheet extends StatelessWidget {
   final TacticalElement element;
 
@@ -269,10 +246,15 @@ class DrawingInfoSheet extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final color = Color(int.parse(element.colorHex.replaceFirst('#', '0xFF')));
     
-    final bool isPoint = element is TacticalPoint;
-    final IconData icon = isPoint 
-        ? TacticalIconManager.getIconData((element as TacticalPoint).iconKey) 
-        : Icons.timeline;
+    // ИЗМЕНЕНИЕ: Настройка иконки окна для регионов
+    IconData icon;
+    if (element is TacticalPoint) {
+      icon = TacticalIconManager.getIconData((element as TacticalPoint).iconKey);
+    } else if (element is TacticalRegion) {
+      icon = Icons.map_outlined;
+    } else {
+      icon = Icons.timeline;
+    }
 
     return Padding(
       padding: const EdgeInsets.all(24.0),
@@ -281,10 +263,7 @@ class DrawingInfoSheet extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Center(
-            child: Container(
-              width: 40, height: 5, 
-              decoration: BoxDecoration(color: colorScheme.outlineVariant, borderRadius: BorderRadius.circular(10))
-            ),
+            child: Container(width: 40, height: 5, decoration: BoxDecoration(color: colorScheme.outlineVariant, borderRadius: BorderRadius.circular(10))),
           ),
           const SizedBox(height: 20),
           Row(
