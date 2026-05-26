@@ -1,7 +1,7 @@
 /*
  * Файл: app_settings.dart
- * Версия: 1.39.10
- * Изменения: Добавлен параметр mapNetworkMode для управления политикой кэширования тайлов карты.
+ * Версия: 1.39.11
+ * Изменения: Внедрена переменная showRegions для управления видимостью контуров оффлайн-карт.
  */
 
 import 'package:flutter/foundation.dart';
@@ -31,8 +31,8 @@ class AppSettings extends ChangeNotifier {
 
   bool _showDrawingToolbar = false;
   bool _showDrawingLabels = true;
+  bool _showRegions = true; // ИЗМЕНЕНИЕ: Видимость регионов
 
-  // ИЗМЕНЕНИЕ: 0 = Гибрид (Сеть+Кэш), 1 = Строгий Оффлайн, 2 = Только Онлайн
   int _mapNetworkMode = 0; 
 
   Future<void> init() async {
@@ -60,6 +60,7 @@ class AppSettings extends ChangeNotifier {
 
     _showDrawingToolbar = _prefs!.getBool('showDrawingToolbar') ?? false;
     _showDrawingLabels = _prefs!.getBool('showDrawingLabels') ?? true;
+    _showRegions = _prefs!.getBool('showRegions') ?? true;
     
     _mapNetworkMode = _prefs!.getInt('mapNetworkMode') ?? 0;
     
@@ -83,6 +84,7 @@ class AppSettings extends ChangeNotifier {
 
   bool get showDrawingToolbar => _showDrawingToolbar;
   bool get showDrawingLabels => _showDrawingLabels;
+  bool get showRegions => _showRegions;
 
   int get mapNetworkMode => _mapNetworkMode;
 
@@ -186,6 +188,14 @@ class AppSettings extends ChangeNotifier {
     if (_showDrawingLabels != value) {
       _showDrawingLabels = value;
       _prefs?.setBool('showDrawingLabels', value);
+      notifyListeners();
+    }
+  }
+  
+  void setShowRegions(bool value) {
+    if (_showRegions != value) {
+      _showRegions = value;
+      _prefs?.setBool('showRegions', value);
       notifyListeners();
     }
   }

@@ -1,7 +1,7 @@
 /*
  * Файл: drawing_models.dart
- * Версия: 1.39.9
- * Изменения: В TacticalRegion добавлены стили границ (borderWidth, isDashed) и геттер borderPath с линейной интерполяцией граней для обеспечения кликабельности периметра.
+ * Версия: 1.39.11
+ * Изменения: В TacticalRegion разделена логика контуров. borderPath теперь возвращает 5 точек для корректной работы лейблов. Добавлен hitTestPath с плотной интерполяцией для точного тапа по периметру.
  */
 
 import 'package:latlong2/latlong.dart';
@@ -99,23 +99,25 @@ class TacticalRegion extends TacticalElement {
     this.isDashed = true,
   }) : super(type: TacticalType.region);
 
-  // ИЗМЕНЕНИЕ: Формируем замкнутый контур с интерполяцией (по 10 точек на грань).
-  // Это позволяет алгоритму вычисления дистанции до вершин корректно обрабатывать тапы по всему периметру.
+  // ИЗМЕНЕНИЕ: 5 точек для алгоритма Лианга-Барски и отрисовки (идеально для прямых линий)
   List<LatLng> get borderPath {
-    final corners = [
+    return [
       topLeft,
       LatLng(topLeft.latitude, bottomRight.longitude),
       bottomRight,
       LatLng(bottomRight.latitude, topLeft.longitude),
       topLeft
     ];
-    
+  }
+
+  // ИЗМЕНЕНИЕ: 40 точек для контроллера нажатий (идеально для Hit-Test по периметру)
+  List<LatLng> get hitTestPath {
+    final corners = borderPath;
     List<LatLng> path = [];
     for (int i = 0; i < corners.length - 1; i++) {
       final p1 = corners[i];
       final p2 = corners[i+1];
       path.add(p1);
-      // Добавляем промежуточные точки
       for (int j = 1; j < 10; j++) {
         path.add(LatLng(
           p1.latitude + (p2.latitude - p1.latitude) * (j / 10),

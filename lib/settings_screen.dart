@@ -1,7 +1,7 @@
 /*
  * Файл: settings_screen.dart
- * Версия: 1.39.10
- * Изменения: В блок "Визуализация на карте" добавлено управление режимом сетевой работы карты.
+ * Версия: 1.39.11
+ * Изменения: В секцию "Тактическая разметка" добавлен SwitchListTile для управления видимостью рамок оффлайн-карт (showRegions).
  */
 
 import 'package:flutter/material.dart';
@@ -31,6 +31,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   
   late bool _showDrawingToolbar;
   late bool _showDrawingLabels;
+  late bool _showRegions; // ИЗМЕНЕНИЕ
   
   late int _mapNetworkMode;
 
@@ -74,6 +75,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     
     _showDrawingToolbar = _settings.showDrawingToolbar;
     _showDrawingLabels = _settings.showDrawingLabels;
+    _showRegions = _settings.showRegions;
     
     _mapNetworkMode = _settings.mapNetworkMode;
   }
@@ -93,6 +95,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     
     _settings.setShowDrawingToolbar(_showDrawingToolbar);
     _settings.setShowDrawingLabels(_showDrawingLabels);
+    _settings.setShowRegions(_showRegions);
     
     _settings.setMapNetworkMode(_mapNetworkMode);
   }
@@ -127,6 +130,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   
                   _showDrawingToolbar = false;
                   _showDrawingLabels = true;
+                  _showRegions = true;
                   
                   _mapNetworkMode = 0;
                 });
@@ -211,6 +215,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: const Text('Показывать названия рядом с нарисованными точками и линиями.'),
               value: _showDrawingLabels,
               onChanged: (val) => setState(() => _showDrawingLabels = val),
+            ),
+            SwitchListTile(
+              title: const Text('Показывать регионы', style: TextStyle(fontWeight: FontWeight.w500)),
+              subtitle: const Text('Отображать контуры скачанных оффлайн-карт.'),
+              value: _showRegions,
+              onChanged: (val) => setState(() => _showRegions = val),
             ),
             const Divider(height: 32),
 

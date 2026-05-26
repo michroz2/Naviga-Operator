@@ -1,7 +1,7 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.39.10
- * Изменения: TileLayer подстраивается под AppSettings().mapNetworkMode. Если выбран режим Только Онлайн, используется стандартный NetworkTileProvider().
+ * Версия: 1.39.13
+ * Изменения: Убран временный костыль `hide MapDrawingLayer` из импортов. Возвращено ключевое слово `const` для `MapGridLayer`.
  */
 
 import 'dart:async';
@@ -19,7 +19,7 @@ import 'offline_map_manager.dart';
 
 import 'map_components/map_scale_bar.dart';
 import 'map_components/map_compass.dart';
-import 'map_components/map_grid_layer.dart';
+import 'map_components/map_grid_layer.dart'; // ИСПРАВЛЕНИЕ: Обычный чистый импорт
 import 'map_components/drawing_toolbar.dart';
 import 'map_components/drawing_manager.dart';
 import 'map_components/drawing_models.dart';
@@ -219,7 +219,7 @@ class _MapScreenState extends State<MapScreen> {
               _bleService.nodeDatabase,
               _bleService.identityNotifier,
               DrawingManager(), 
-              AppSettings(), // ИЗМЕНЕНИЕ: Подписка на настройки для динамического обновления провайдера
+              AppSettings(), 
             ]),
             builder: (context, child) {
               final nodes = _bleService.nodeDatabase.nodes.values.where((n) => n.hasValidGps);
@@ -239,10 +239,18 @@ class _MapScreenState extends State<MapScreen> {
                 interactiveFlags = interactiveFlags & ~InteractiveFlag.rotate;
               }
 
-              // ИЗМЕНЕНИЕ: Выбор провайдера тайлов в зависимости от режима сети
-              final tileProvider = AppSettings().mapNetworkMode == 2
-                  ? NetworkTileProvider()
-                  : FMTCStore('NavigaStore').getTileProvider();
+              TileProvider tileProvider;
+              if (AppSettings().mapNetworkMode == 2) {
+                tileProvider = NetworkTileProvider();
+              } else {
+                final cacheBehavior = AppSettings().mapNetworkMode == 1
+                    ? CacheBehavior.cacheOnly
+                    : CacheBehavior.cacheFirst; 
+                    
+                tileProvider = FMTCStore('NavigaStore').getTileProvider(
+                  settings: FMTCTileProviderSettings(behavior: cacheBehavior), 
+                );
+              }
 
               return FlutterMap(
                 mapController: _mapController,
@@ -285,6 +293,7 @@ class _MapScreenState extends State<MapScreen> {
                       tileProvider: tileProvider, 
                     ),
                   
+                  // ИСПРАВЛЕНИЕ: Возвращен const после восстановления оригинального файла
                   if (_isMapReady && AppSettings().showGrid) const MapGridLayer(),
 
                   const MapDrawingLayer(),

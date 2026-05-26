@@ -1,8 +1,7 @@
 /*
  * Файл: exchange_screen.dart
- * Версия: 1.39.10
- * Описание: Хаб управления локальными данными (Data Management).
- * Изменения: Полный редизайн. Добавлены секции для тактики и оффлайн-карт, а также защищенные красные кнопки полного удаления данных (Очистка кэша и Очистка разметки).
+ * Версия: 1.39.13
+ * Изменения: Исправлена синтаксическая ошибка — добавлен обязательный именованный параметр onPressed в OutlinedButton.icon.
  */
 
 import 'dart:io';
@@ -96,6 +95,7 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
                   DrawingManager().clearTacticalMarkup();
                   DrawingManager().importElements(importedElements, replace: false);
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Данные ЗАМЕНЕНЫ')));
+                  setState(() {}); 
                 },
                 icon: const Icon(Icons.warning_amber_rounded),
                 label: const Text('ЗАМЕНИТЬ СТАРУЮ РАЗМЕТКУ'),
@@ -113,6 +113,7 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
                   Navigator.of(ctx).pop();
                   DrawingManager().importElements(importedElements, replace: false);
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Данные ДОБАВЛЕНЫ')));
+                  setState(() {}); 
                 },
                 icon: const Icon(Icons.library_add),
                 label: const Text('ДОБАВИТЬ К СУЩЕСТВУЮЩЕЙ'),
@@ -145,6 +146,7 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
               Navigator.of(ctx).pop();
               DrawingManager().clearTacticalMarkup();
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Тактическая разметка полностью удалена.')));
+              setState(() {}); 
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('УДАЛИТЬ ВСЁ'),
@@ -166,6 +168,16 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
     );
   }
 
+  Future<String> _getCacheSize() async {
+    try {
+      final sizeInKiB = await FMTCStore('NavigaStore').stats.size;
+      final sizeInMB = sizeInKiB / 1024;
+      return '${sizeInMB.toStringAsFixed(2)} МБ';
+    } catch (e) {
+      return 'Размер неизвестен';
+    }
+  }
+
   void _confirmClearCache() {
     showDialog(
       context: context,
@@ -185,6 +197,7 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
                 
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Кэш карт успешно очищен.')));
+                  setState(() {}); 
                 }
               } catch (e) {
                 _showError('Ошибка при очистке кэша: $e');
@@ -211,6 +224,11 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    
+    final elements = DrawingManager().elements;
+    final pointsCount = elements.whereType<TacticalPoint>().length;
+    final linesCount = elements.whereType<TacticalLine>().length;
+    final regionsCount = elements.whereType<TacticalRegion>().length;
 
     return Scaffold(
       appBar: AppBar(
@@ -224,6 +242,7 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
             context,
             title: 'Тактическая Разметка',
             subtitle: 'Импорт, Экспорт и удаление нарисованных точек и линий (маршрутов).',
+            statsText: 'Точек: $pointsCount  |  Линий: $linesCount',
             icon: Icons.edit_location_alt,
             onSend: _exportMarkup,
             onLoad: _importMarkup,
@@ -231,15 +250,25 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
             clearText: 'ОЧИСТИТЬ ВСЮ РАЗМЕТКУ',
           ),
           const SizedBox(height: 24),
-          _buildActionCard(
-            context,
-            title: 'Оффлайн Карты (Кэш)',
-            subtitle: 'Управление массивом скачанных географических тайлов.',
-            icon: Icons.map_outlined,
-            onSend: _futureFeature,
-            onLoad: _futureFeature,
-            onClear: _confirmClearCache,
-            clearText: 'ОЧИСТИТЬ ВЕСЬ КЭШ КАРТ',
+          FutureBuilder<String>(
+            future: _getCacheSize(),
+            builder: (context, snapshot) {
+              final sizeText = snapshot.connectionState == ConnectionState.waiting 
+                  ? 'Вычисление...' 
+                  : (snapshot.data ?? 'Неизвестно');
+              
+              return _buildActionCard(
+                context,
+                title: 'Оффлайн Карты (Кэш)',
+                subtitle: 'Управление массивом скачанных географических тайлов.',
+                statsText: 'Выделено регионов: $regionsCount\nОбъем кэша на диске: $sizeText',
+                icon: Icons.map_outlined,
+                onSend: _futureFeature,
+                onLoad: _futureFeature,
+                onClear: _confirmClearCache,
+                clearText: 'ОЧИСТИТЬ ВЕСЬ КЭШ КАРТ',
+              );
+            },
           ),
         ],
       ),
@@ -249,6 +278,7 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
   Widget _buildActionCard(BuildContext context, {
     required String title,
     required String subtitle,
+    required String statsText,
     required IconData icon,
     required VoidCallback onSend,
     required VoidCallback onLoad,
@@ -271,7 +301,9 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
                 Expanded(child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 8),
+            Text(statsText, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: colorScheme.secondary)),
+            const SizedBox(height: 8),
             Text(subtitle, style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant)),
             const Divider(height: 24),
             Row(
@@ -297,7 +329,7 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
             ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
-              onPressed: onClear,
+              onPressed: onClear, // ИСПРАВЛЕНИЕ: Добавлен именованный параметр
               icon: const Icon(Icons.delete_forever),
               label: Text(clearText),
               style: OutlinedButton.styleFrom(

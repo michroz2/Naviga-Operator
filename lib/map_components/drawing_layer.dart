@@ -1,7 +1,8 @@
 /*
  * Файл: drawing_layer.dart 
- * Версия: 1.39.9 (Хотфикс)
- * Изменения: Исправлена ошибка компиляции. Свойство StrokePattern (flutter_map v7+) заменено на isDotted (flutter_map v6.x).
+ * Версия: 1.39.13
+ * Описание: Слой отрисовки объектов тактической разметки и рамок оффлайн-карт.
+ * Изменения: Синхронизировано управление видимостью регионов (showRegions) и алгоритм вывода подписей по центру при сильном удалении карты.
  */
 
 import 'dart:math' as math;
@@ -24,8 +25,8 @@ class MapDrawingLayer extends StatelessWidget {
         final camera = MapCamera.of(context);
         final elements = DrawingManager().elements;
         final showLabels = AppSettings().showDrawingLabels;
+        final showRegions = AppSettings().showRegions;
         
-        // Разделяем списки для соблюдения Z-индекса (Регионы на дне)
         List<Polyline> regionPolylines = [];
         List<Polyline> tacticalPolylines = [];
         
@@ -36,17 +37,28 @@ class MapDrawingLayer extends StatelessWidget {
           final color = Color(int.parse(el.colorHex.replaceFirst('#', '0xFF')));
 
           if (el is TacticalRegion) {
-            regionPolylines.add(Polyline(
-              points: el.borderPath,
-              strokeWidth: el.borderWidth,
-              color: color,
-              // ИСПРАВЛЕНИЕ: Использование API flutter_map v6 для прерывистой линии
-              isDotted: el.isDashed, 
-            ));
+            if (showRegions) {
+              regionPolylines.add(Polyline(
+                points: el.borderPath,
+                strokeWidth: el.borderWidth,
+                color: color,
+                isDotted: el.isDashed, 
+              ));
 
-            if (showLabels && el.label.isNotEmpty) {
-              final labelMarker = _calculateDynamicLineLabel(el.borderPath, el.label, camera, color);
-              if (labelMarker != null) regionMarkers.add(labelMarker);
+              if (showLabels && el.label.isNotEmpty) {
+                var labelMarker = _calculateDynamicLineLabel(el.borderPath, el.label, camera, color);
+                
+                if (labelMarker == null) {
+                  final centerLat = (el.topLeft.latitude + el.bottomRight.latitude) / 2;
+                  final centerLon = (el.topLeft.longitude + el.bottomRight.longitude) / 2;
+                  labelMarker = Marker(
+                    point: LatLng(centerLat, centerLon),
+                    width: 140, height: 24,
+                    child: _buildLabelWidget(el.label, color),
+                  );
+                }
+                regionMarkers.add(labelMarker);
+              }
             }
           } 
           else if (el is TacticalLine) {
@@ -95,13 +107,32 @@ class MapDrawingLayer extends StatelessWidget {
 
         return Stack(
           children: [
-            // Сначала рисуем регионы, затем тактические линии
             PolylineLayer(polylines: [...regionPolylines, ...tacticalPolylines]),
-            // Лейблы регионов под маркерами разметки
             MarkerLayer(markers: [...regionMarkers, ...tacticalMarkers]),
           ],
         );
       },
+    );
+  }
+
+  Widget _buildLabelWidget(String text, Color color) {
+    return Container(
+      alignment: Alignment.center,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.9),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: color.withOpacity(0.6), width: 1.0),
+          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2, offset: Offset(0, 1))],
+        ),
+        child: Text(
+          text,
+          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black87),
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
+        ),
+      ),
     );
   }
 
@@ -186,26 +217,9 @@ class MapDrawingLayer extends StatelessWidget {
       width: 140,
       height: 24,
       rotate: true,
-      child: Container(
-        alignment: Alignment.center,
-        child: Transform.rotate(
-          angle: bestAngle,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.9),
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: color.withOpacity(0.6), width: 1.0),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2, offset: Offset(0, 1))],
-            ),
-            child: Text(
-              labelText,
-              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black87),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
-            ),
-          ),
-        ),
+      child: Transform.rotate(
+        angle: bestAngle,
+        child: _buildLabelWidget(labelText, color),
       ),
     );
   }

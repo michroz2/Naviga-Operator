@@ -1,7 +1,7 @@
 /*
  * Файл: drawing_controller.dart
- * Версия: 1.39.9
- * Изменения: Добавлена логика Hit-Test для TacticalRegion. Тапы определяются по интерполированному контуру borderPath, позволяя корректно взаимодействовать с периметром прямоугольника.
+ * Версия: 1.39.11
+ * Изменения: Hit-Test для TacticalRegion теперь использует hitTestPath (интерполированный контур) вместо borderPath.
  */
 
 import 'dart:math' as math;
@@ -57,8 +57,8 @@ class DrawingController {
           }
         }
       } else if (element is TacticalRegion) {
-        // ИЗМЕНЕНИЕ: Обработка попаданий в границы региона. Используется borderPath с плотными точками.
-        for (var latLng in element.borderPath) {
+        // ИЗМЕНЕНИЕ: Используем hitTestPath для проверки тапов
+        for (var latLng in element.hitTestPath) {
           final dist = distanceCalculator.distance(tappedPoint, latLng);
           if (dist < minRegionDistMeters) {
             minRegionDistMeters = dist;
@@ -108,7 +108,6 @@ class DrawingController {
       return; 
     }
 
-    // Определяем абсолютно ближайший элемент из всех категорий
     TacticalElement? closest = closestPoint;
     double minDist = minPointDistMeters;
 

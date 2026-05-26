@@ -421,7 +421,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                         Icon(Icons.import_export, color: Colors.blueGrey, size: 32),
                         SizedBox(width: 16),
                         Expanded(
-                          child: Text('Обмен картами', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          child: Text('Данные и Обмен', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                         ),
                         Icon(Icons.chevron_right, color: Colors.grey),
                       ],
