@@ -1,8 +1,7 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.39.7
- * Описание: Главный экран-оркестратор интерактивной карты.
- * Изменения: Интеграция плавающего, перемещаемого виджета прогресса оффлайн-загрузки (UC-24).
+ * Версия: 1.39.10
+ * Изменения: TileLayer подстраивается под AppSettings().mapNetworkMode. Если выбран режим Только Онлайн, используется стандартный NetworkTileProvider().
  */
 
 import 'dart:async';
@@ -54,7 +53,6 @@ class _MapScreenState extends State<MapScreen> {
   List<LatLng> _currentDrawingLinePath = [];
   bool _isRegionDrawingActive = false; 
 
-  // Координаты плавающего виджета загрузки
   double _downloadWidgetX = 16.0;
   double _downloadWidgetY = 100.0;
 
@@ -125,7 +123,6 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  // Визуализация плавающего виджета загрузки
   Widget _buildDraggableDownloadWidget() {
     return ListenableBuilder(
       listenable: OfflineMapManager(),
@@ -141,7 +138,6 @@ class _MapScreenState extends State<MapScreen> {
           child: GestureDetector(
             onPanUpdate: (details) {
               setState(() {
-                // Простое ограничение, чтобы не утащить за левый/верхний край экрана
                 _downloadWidgetX = math.max(0, _downloadWidgetX + details.delta.dx);
                 _downloadWidgetY = math.max(0, _downloadWidgetY + details.delta.dy);
               });
@@ -154,9 +150,7 @@ class _MapScreenState extends State<MapScreen> {
                 decoration: BoxDecoration(
                   color: colorScheme.surface.withOpacity(0.95),
                   borderRadius: BorderRadius.circular(12),
-                  boxShadow: const [
-                    BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))
-                  ],
+                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))],
                   border: Border.all(color: colorScheme.outlineVariant),
                 ),
                 child: Column(
@@ -218,7 +212,6 @@ class _MapScreenState extends State<MapScreen> {
         title: Text(widget.isOfflineSelectMode ? 'Выбор оффлайн-карты' : 'Naviga Map'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
-      // Оборачиваем тело в Stack, чтобы плавающий виджет был поверх карты
       body: Stack(
         children: [
           ListenableBuilder(
@@ -226,6 +219,7 @@ class _MapScreenState extends State<MapScreen> {
               _bleService.nodeDatabase,
               _bleService.identityNotifier,
               DrawingManager(), 
+              AppSettings(), // ИЗМЕНЕНИЕ: Подписка на настройки для динамического обновления провайдера
             ]),
             builder: (context, child) {
               final nodes = _bleService.nodeDatabase.nodes.values.where((n) => n.hasValidGps);
@@ -244,6 +238,11 @@ class _MapScreenState extends State<MapScreen> {
               } else if (AppSettings().compassMode != 1) {
                 interactiveFlags = interactiveFlags & ~InteractiveFlag.rotate;
               }
+
+              // ИЗМЕНЕНИЕ: Выбор провайдера тайлов в зависимости от режима сети
+              final tileProvider = AppSettings().mapNetworkMode == 2
+                  ? NetworkTileProvider()
+                  : FMTCStore('NavigaStore').getTileProvider();
 
               return FlutterMap(
                 mapController: _mapController,
@@ -276,14 +275,14 @@ class _MapScreenState extends State<MapScreen> {
                       child: TileLayer(
                         urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                         userAgentPackageName: 'com.michroz2.naviga_operator',
-                        tileProvider: FMTCStore('NavigaStore').getTileProvider(), 
+                        tileProvider: tileProvider, 
                       ),
                     )
                   else
                     TileLayer(
                       urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                       userAgentPackageName: 'com.michroz2.naviga_operator',
-                      tileProvider: FMTCStore('NavigaStore').getTileProvider(), 
+                      tileProvider: tileProvider, 
                     ),
                   
                   if (_isMapReady && AppSettings().showGrid) const MapGridLayer(),
@@ -361,7 +360,6 @@ class _MapScreenState extends State<MapScreen> {
             },
           ),
           
-          // Виджет прогресса оффлайн-загрузки
           _buildDraggableDownloadWidget(),
         ],
       ),

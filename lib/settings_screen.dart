@@ -1,7 +1,7 @@
 /*
  * Файл: settings_screen.dart
- * Версия: 1.37.3
- * Изменения: Добавлен блок "Тактическая разметка" со свитчами управления тулбаром и подписями.
+ * Версия: 1.39.10
+ * Изменения: В блок "Визуализация на карте" добавлено управление режимом сетевой работы карты.
  */
 
 import 'package:flutter/material.dart';
@@ -29,9 +29,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late double _gridOpacity;
   late bool _invertMapColors;
   
-  // Новые параметры
   late bool _showDrawingToolbar;
   late bool _showDrawingLabels;
+  
+  late int _mapNetworkMode;
 
   bool _isCancelled = false;
 
@@ -48,6 +49,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     0: 'Север всегда сверху',
     1: 'Свободное вращение',
     2: 'По магнитному компасу',
+  };
+
+  final Map<int, String> _mapNetworkOptions = {
+    0: 'Гибридный (Кэш + Сеть)',
+    1: 'Строгий Оффлайн (Только Кэш)',
+    2: 'Только Онлайн (Без Кэша)',
   };
 
   @override
@@ -67,6 +74,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     
     _showDrawingToolbar = _settings.showDrawingToolbar;
     _showDrawingLabels = _settings.showDrawingLabels;
+    
+    _mapNetworkMode = _settings.mapNetworkMode;
   }
 
   void _saveAllSettings() {
@@ -84,6 +93,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     
     _settings.setShowDrawingToolbar(_showDrawingToolbar);
     _settings.setShowDrawingLabels(_showDrawingLabels);
+    
+    _settings.setMapNetworkMode(_mapNetworkMode);
   }
 
   void _showResetConfirmation(BuildContext context) {
@@ -116,6 +127,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   
                   _showDrawingToolbar = false;
                   _showDrawingLabels = true;
+                  
+                  _mapNetworkMode = 0;
                 });
               },
               style: TextButton.styleFrom(foregroundColor: Colors.orange.shade900),
@@ -145,6 +158,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           padding: const EdgeInsets.symmetric(vertical: 16.0),
           children: [
             _buildSectionHeader(Icons.map, 'Визуализация на карте'),
+            _buildDropdownRow(
+              'Режим сетевой работы',
+              _mapNetworkMode,
+              _mapNetworkOptions,
+              (val) => setState(() => _mapNetworkMode = val as int),
+            ),
             SwitchListTile(
               title: const Text('Инверсия цветов карты', style: TextStyle(fontWeight: FontWeight.w500)),
               subtitle: const Text('Тактический (ночной) режим отображения карты'),
@@ -158,46 +177,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onChanged: (val) => setState(() => _showGrid = val),
             ),
             _buildSliderRow(
-              'Толщина линий сетки',
-              _gridWidth,
-              0.5,
-              5.0,
-              9,
+              'Толщина линий сетки', _gridWidth, 0.5, 5.0, 9,
               (val) => setState(() => _gridWidth = val),
             ),
             _buildSliderRow(
-              'Яркость сетки',
-              _gridOpacity * 100,
-              10.0,
-              100.0,
-              9,
+              'Яркость сетки', _gridOpacity * 100, 10.0, 100.0, 9,
               (val) => setState(() => _gridOpacity = val / 100),
-              suffix: '%',
-              isInteger: true,
+              suffix: '%', isInteger: true,
             ),
             _buildDropdownRow(
-              'Режим компаса',
-              _compassMode,
-              _compassOptions,
+              'Режим компаса', _compassMode, _compassOptions,
               (val) => setState(() => _compassMode = val as int),
             ),
             _buildDropdownRow(
-              'Время отображения трека',
-              _trackTimeMs,
-              _trackTimeOptions,
+              'Время отображения трека', _trackTimeMs, _trackTimeOptions,
               (val) => setState(() => _trackTimeMs = val as int),
             ),
             _buildSliderRow(
-              'Толщина линии трека',
-              _trackWidth,
-              1.0,
-              10.0,
-              9,
+              'Толщина линии трека', _trackWidth, 1.0, 10.0, 9,
               (val) => setState(() => _trackWidth = val),
             ),
             const Divider(height: 32),
 
-            // ИЗМЕНЕНИЕ 1.37.3: Новый блок настроек разметки
             _buildSectionHeader(Icons.edit_location_alt, 'Тактическая разметка'),
             SwitchListTile(
               title: const Text('Панель инструментов разметки', style: TextStyle(fontWeight: FontWeight.w500)),
@@ -215,22 +216,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
             _buildSectionHeader(Icons.filter_alt, 'Фильтр блуждания'),
             _buildSliderRow(
-              'Радиус фильтрации',
-              _jitterRadius,
-              5.0,
-              30.0,
-              25,
-              (val) => setState(() => _jitterRadius = val),
-              suffix: ' м',
+              'Радиус фильтрации', _jitterRadius, 5.0, 30.0, 25,
+              (val) => setState(() => _jitterRadius = val), suffix: ' м',
             ),
             _buildSliderRow(
-              'Количество проверяемых точек',
-              _jitterPoints.toDouble(),
-              1.0,
-              10.0,
-              9,
-              (val) => setState(() => _jitterPoints = val.toInt()),
-              isInteger: true,
+              'Количество проверяемых точек', _jitterPoints.toDouble(), 1.0, 10.0, 9,
+              (val) => setState(() => _jitterPoints = val.toInt()), isInteger: true,
             ),
             const Divider(height: 32),
 
@@ -259,9 +250,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () {
-                        setState(() {
-                          _isCancelled = true; 
-                        });
+                        setState(() => _isCancelled = true);
                         Navigator.pop(context); 
                       },
                       icon: const Icon(Icons.cancel_outlined),
@@ -304,10 +293,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         children: [
           Icon(icon, color: Colors.blueGrey, size: 24),
           const SizedBox(width: 12),
-          Text(
-            title,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey),
-          ),
+          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
         ],
       ),
     );
@@ -316,19 +302,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildDropdownRow(String label, int currentValue, Map<int, String> options, Function(int?) onChanged) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500))),
-          DropdownButton<int>(
-            value: currentValue,
-            items: options.entries.map((entry) {
-              return DropdownMenuItem<int>(
-                value: entry.key,
-                child: Text(entry.value),
-              );
-            }).toList(),
-            onChanged: onChanged,
+          Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 4),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey.shade400),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<int>(
+                value: currentValue,
+                isExpanded: true,
+                items: options.entries.map((entry) {
+                  return DropdownMenuItem<int>(
+                    value: entry.key,
+                    child: Text(entry.value),
+                  );
+                }).toList(),
+                onChanged: onChanged,
+              ),
+            ),
           ),
         ],
       ),
@@ -348,13 +346,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Text('${isInteger ? value.toInt() : value.toStringAsFixed(1)}$suffix', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blue)),
             ],
           ),
-          Slider(
-            value: value,
-            min: min,
-            max: max,
-            divisions: divisions,
-            onChanged: onChanged,
-          ),
+          Slider(value: value, min: min, max: max, divisions: divisions, onChanged: onChanged),
         ],
       ),
     );

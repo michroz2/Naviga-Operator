@@ -1,8 +1,7 @@
 /*
  * Файл: drawing_manager.dart
- * Версия: 1.37.0
- * Описание: Менеджер состояния для тактической разметки.
- * Изменения: Добавлен метод importElements с логикой ЗАМЕНИТЬ (Replace) и ДОБАВИТЬ (Append).
+ * Версия: 1.39.10
+ * Изменения: Добавлены методы частичной очистки данных (clearTacticalMarkup и clearRegions) для экрана управления памятью.
  */
 
 import 'package:flutter/material.dart';
@@ -38,15 +37,10 @@ class DrawingManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ============================================================================
-  // ЛОГИКА ИМПОРТА (UC-25)
-  // ============================================================================
   void importElements(List<TacticalElement> importedElements, {required bool replace}) {
     if (replace) {
-      // Жесткая замена
       _elements = List.from(importedElements);
     } else {
-      // Мягкое добавление с перегенерацией ID для избежания конфликтов
       final uniquePrefix = DateTime.now().microsecondsSinceEpoch.toString();
       
       for (var el in importedElements) {
@@ -119,6 +113,18 @@ class DrawingManager extends ChangeNotifier {
 
   void removeElement(String id) {
     _elements.removeWhere((e) => e.id == id);
+    _save();
+  }
+
+  // ИЗМЕНЕНИЕ: Очистка только тактической разметки (точек и линий)
+  void clearTacticalMarkup() {
+    _elements.removeWhere((e) => e.type == TacticalType.point || e.type == TacticalType.line);
+    _save();
+  }
+
+  // ИЗМЕНЕНИЕ: Очистка только контуров регионов
+  void clearRegions() {
+    _elements.removeWhere((e) => e.type == TacticalType.region);
     _save();
   }
 

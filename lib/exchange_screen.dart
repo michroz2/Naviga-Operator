@@ -1,13 +1,15 @@
 /*
  * Файл: exchange_screen.dart
- * Версия: 1.37.2
- * Описание: Экран управления импортом и экспортом данных (Разметка и Карты).
+ * Версия: 1.39.10
+ * Описание: Хаб управления локальными данными (Data Management).
+ * Изменения: Полный редизайн. Добавлены секции для тактики и оффлайн-карт, а также защищенные красные кнопки полного удаления данных (Очистка кэша и Очистка разметки).
  */
 
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
 
 import 'map_components/drawing_manager.dart';
 import 'map_components/drawing_storage.dart';
@@ -22,18 +24,20 @@ class ExchangeScreen extends StatefulWidget {
 
 class _ExchangeScreenState extends State<ExchangeScreen> {
   
-  // Экспорт разметки (JSON)
+  // ==========================================================
+  // ТАКТИЧЕСКАЯ РАЗМЕТКА
+  // ==========================================================
   Future<void> _exportMarkup() async {
     final manager = DrawingManager();
-    if (manager.elements.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ваша тактическая карта пуста. Нечего отправлять.')),
-      );
+    final pointsAndLines = manager.elements.where((e) => e.type != TacticalType.region).toList();
+
+    if (pointsAndLines.isEmpty) {
+      _showError('Ваша тактическая карта пуста. Нечего отправлять.');
       return;
     }
 
     try {
-      final path = await DrawingStorage().prepareExportFile(manager.elements);
+      final path = await DrawingStorage().prepareExportFile(pointsAndLines);
       await Share.shareXFiles(
         [XFile(path, mimeType: 'application/json')], 
         text: 'Тактическая разметка Naviga',
@@ -43,7 +47,6 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
     }
   }
 
-  // Импорт разметки (JSON)
   Future<void> _importMarkup() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.any);
@@ -60,23 +63,6 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
     } catch (e) {
       _showError('Ошибка импорта: $e');
     }
-  }
-
-  // Плейсхолдеры для будущих функций
-  void _futureFeature() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Эта функция будет доступна в следующих версиях.'),
-        backgroundColor: Colors.blueGrey,
-      ),
-    );
-  }
-
-  void _showError(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red),
-    );
   }
 
   void _showMergeDialog(List<TacticalElement> importedElements) {
@@ -107,11 +93,12 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
               child: ElevatedButton.icon(
                 onPressed: () {
                   Navigator.of(ctx).pop();
-                  DrawingManager().importElements(importedElements, replace: true);
+                  DrawingManager().clearTacticalMarkup();
+                  DrawingManager().importElements(importedElements, replace: false);
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Данные ЗАМЕНЕНЫ')));
                 },
                 icon: const Icon(Icons.warning_amber_rounded),
-                label: const Text('ЗАМЕНИТЬ'),
+                label: const Text('ЗАМЕНИТЬ СТАРУЮ РАЗМЕТКУ'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: colorScheme.errorContainer, 
                   foregroundColor: colorScheme.onErrorContainer
@@ -128,7 +115,7 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Данные ДОБАВЛЕНЫ')));
                 },
                 icon: const Icon(Icons.library_add),
-                label: const Text('ДОБАВИТЬ'),
+                label: const Text('ДОБАВИТЬ К СУЩЕСТВУЮЩЕЙ'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: colorScheme.primaryContainer, 
                   foregroundColor: colorScheme.onPrimaryContainer
@@ -145,13 +132,89 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
     );
   }
 
+  void _confirmClearMarkup() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удаление разметки', style: TextStyle(color: Colors.red)),
+        content: const Text('Вы уверены, что хотите полностью удалить все нарисованные точки и линии? Отменить это действие невозможно.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('ОТМЕНА')),
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              DrawingManager().clearTacticalMarkup();
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Тактическая разметка полностью удалена.')));
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('УДАЛИТЬ ВСЁ'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==========================================================
+  // ОФФЛАЙН КАРТЫ
+  // ==========================================================
+  void _futureFeature() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Эта функция будет доступна в следующих версиях.'),
+        backgroundColor: Colors.blueGrey,
+      ),
+    );
+  }
+
+  void _confirmClearCache() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Очистка кэша карт', style: TextStyle(color: Colors.red)),
+        content: const Text('Это удалит ВСЕ скачанные фрагменты оффлайн-карт и выделенные регионы с устройства.\n\nПродолжить?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('ОТМЕНА')),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              try {
+                final store = FMTCStore('NavigaStore');
+                await store.manage.delete();
+                await store.manage.create();
+                DrawingManager().clearRegions();
+                
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Кэш карт успешно очищен.')));
+                }
+              } catch (e) {
+                _showError('Ошибка при очистке кэша: $e');
+              }
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('ОЧИСТИТЬ КЭШ'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
+  }
+
+  // ==========================================================
+  // UI СБОРКА
+  // ==========================================================
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Обмен картами'),
+        title: const Text('Данные и Обмен'),
         backgroundColor: colorScheme.inversePrimary,
       ),
       body: ListView(
@@ -160,19 +223,23 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
           _buildActionCard(
             context,
             title: 'Тактическая Разметка',
-            subtitle: 'Обмен нарисованными точками и линиями',
+            subtitle: 'Импорт, Экспорт и удаление нарисованных точек и линий (маршрутов).',
             icon: Icons.edit_location_alt,
             onSend: _exportMarkup,
             onLoad: _importMarkup,
+            onClear: _confirmClearMarkup,
+            clearText: 'ОЧИСТИТЬ ВСЮ РАЗМЕТКУ',
           ),
           const SizedBox(height: 24),
           _buildActionCard(
             context,
-            title: 'Оффлайн Карты',
-            subtitle: 'Обмен файлами картографической подложки',
+            title: 'Оффлайн Карты (Кэш)',
+            subtitle: 'Управление массивом скачанных географических тайлов.',
             icon: Icons.map_outlined,
             onSend: _futureFeature,
             onLoad: _futureFeature,
+            onClear: _confirmClearCache,
+            clearText: 'ОЧИСТИТЬ ВЕСЬ КЭШ КАРТ',
           ),
         ],
       ),
@@ -185,6 +252,8 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
     required IconData icon,
     required VoidCallback onSend,
     required VoidCallback onLoad,
+    required VoidCallback onClear,
+    required String clearText,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     return Card(
@@ -193,28 +262,26 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
               children: [
                 Icon(icon, color: colorScheme.primary, size: 28),
                 const SizedBox(width: 12),
-                Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Expanded(child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
               ],
             ),
             const SizedBox(height: 4),
             Text(subtitle, style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant)),
-            const Divider(height: 32),
+            const Divider(height: 24),
             Row(
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: onSend,
                     icon: const Icon(Icons.send_rounded, size: 20),
-                    label: const Text('ПОСЛАТЬ'),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
+                    label: const Text('ЭКСПОРТ'),
+                    style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -222,13 +289,22 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
                   child: OutlinedButton.icon(
                     onPressed: onLoad,
                     icon: const Icon(Icons.download_rounded, size: 20),
-                    label: const Text('ЗАГРУЗИТЬ'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
+                    label: const Text('ИМПОРТ'),
+                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: onClear,
+              icon: const Icon(Icons.delete_forever),
+              label: Text(clearText),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: colorScheme.error,
+                side: BorderSide(color: colorScheme.error.withOpacity(0.5)),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
             ),
           ],
         ),

@@ -1,7 +1,7 @@
 /*
  * Файл: app_settings.dart
- * Версия: 1.37.3
- * Изменения: Добавлены параметры showDrawingToolbar и showDrawingLabels для управления тактической разметкой.
+ * Версия: 1.39.10
+ * Изменения: Добавлен параметр mapNetworkMode для управления политикой кэширования тайлов карты.
  */
 
 import 'package:flutter/foundation.dart';
@@ -29,9 +29,11 @@ class AppSettings extends ChangeNotifier {
   
   bool _invertMapColors = false;
 
-  // ИЗМЕНЕНИЕ 1.37.3: Новые настройки тактической разметки
   bool _showDrawingToolbar = false;
   bool _showDrawingLabels = true;
+
+  // ИЗМЕНЕНИЕ: 0 = Гибрид (Сеть+Кэш), 1 = Строгий Оффлайн, 2 = Только Онлайн
+  int _mapNetworkMode = 0; 
 
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
@@ -56,9 +58,10 @@ class AppSettings extends ChangeNotifier {
     
     _invertMapColors = _prefs!.getBool('invertMapColors') ?? false;
 
-    // Чтение новых параметров разметки
     _showDrawingToolbar = _prefs!.getBool('showDrawingToolbar') ?? false;
     _showDrawingLabels = _prefs!.getBool('showDrawingLabels') ?? true;
+    
+    _mapNetworkMode = _prefs!.getInt('mapNetworkMode') ?? 0;
     
     notifyListeners();
   }
@@ -80,6 +83,8 @@ class AppSettings extends ChangeNotifier {
 
   bool get showDrawingToolbar => _showDrawingToolbar;
   bool get showDrawingLabels => _showDrawingLabels;
+
+  int get mapNetworkMode => _mapNetworkMode;
 
   void setTrackTimeMs(int value) {
     if (_trackTimeMs != value) {
@@ -169,7 +174,6 @@ class AppSettings extends ChangeNotifier {
     }
   }
 
-  // Сеттеры для новых параметров
   void setShowDrawingToolbar(bool value) {
     if (_showDrawingToolbar != value) {
       _showDrawingToolbar = value;
@@ -182,6 +186,14 @@ class AppSettings extends ChangeNotifier {
     if (_showDrawingLabels != value) {
       _showDrawingLabels = value;
       _prefs?.setBool('showDrawingLabels', value);
+      notifyListeners();
+    }
+  }
+
+  void setMapNetworkMode(int value) {
+    if (_mapNetworkMode != value) {
+      _mapNetworkMode = value;
+      _prefs?.setInt('mapNetworkMode', value);
       notifyListeners();
     }
   }
