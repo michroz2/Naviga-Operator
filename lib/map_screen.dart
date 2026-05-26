@@ -1,10 +1,11 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.39.13
- * Изменения: Убран временный костыль `hide MapDrawingLayer` из импортов. Возвращено ключевое слово `const` для `MapGridLayer`.
+ * Версия: 1.39.17
+ * Изменения: Добавлен импорт dart:io. Внедрен Рубеж 1 (Pre-flight Check) — проверка доступности сервера карт перед началом скачивания оффлайн-региона.
  */
 
 import 'dart:async';
+import 'dart:io'; // ИСПРАВЛЕНИЕ: Добавлено для InternetAddress
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -19,7 +20,7 @@ import 'offline_map_manager.dart';
 
 import 'map_components/map_scale_bar.dart';
 import 'map_components/map_compass.dart';
-import 'map_components/map_grid_layer.dart'; // ИСПРАВЛЕНИЕ: Обычный чистый импорт
+import 'map_components/map_grid_layer.dart'; 
 import 'map_components/drawing_toolbar.dart';
 import 'map_components/drawing_manager.dart';
 import 'map_components/drawing_models.dart';
@@ -293,7 +294,6 @@ class _MapScreenState extends State<MapScreen> {
                       tileProvider: tileProvider, 
                     ),
                   
-                  // ИСПРАВЛЕНИЕ: Возвращен const после восстановления оригинального файла
                   if (_isMapReady && AppSettings().showGrid) const MapGridLayer(),
 
                   const MapDrawingLayer(),
@@ -303,7 +303,29 @@ class _MapScreenState extends State<MapScreen> {
                       mapController: _mapController,
                       isMapReady: _isMapReady,
                       onCancel: () => setState(() => _isRegionDrawingActive = false),
-                      onRegionSelected: (newRegion) {
+                      onRegionSelected: (newRegion) async {
+                        // ==========================================================
+                        // РУБЕЖ 1: PRE-FLIGHT CHECK (Проверка связи с сервером)
+                        // ==========================================================
+                        try {
+                          final result = await InternetAddress.lookup('tile.openstreetmap.org');
+                          if (result.isEmpty || result[0].rawAddress.isEmpty) {
+                            throw const SocketException('No network');
+                          }
+                        } catch (_) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Нет соединения с сервером карт. Загрузка невозможна.'),
+                                backgroundColor: Colors.red,
+                              )
+                            );
+                            setState(() => _isRegionDrawingActive = false);
+                          }
+                          return; // Жестко прерываем выполнение, к менеджеру не обращаемся
+                        }
+
+                        // Если интернет есть, продолжаем стандартную логику
                         DrawingManager().addElement(newRegion);
                         OfflineMapManager().downloadRegion(newRegion);
                         if (mounted) {
