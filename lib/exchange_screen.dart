@@ -1,13 +1,15 @@
 /*
  * Файл: exchange_screen.dart
- * Версия: 1.39.13
- * Изменения: Исправлена синтаксическая ошибка — добавлен обязательный именованный параметр onPressed в OutlinedButton.icon.
+ * Версия: 1.39.16
+ * Описание: Хаб управления локальными данными.
+ * Изменения: Синтаксис FMTCRoot.external исправлен на использование обязательного именованного параметра pathToArchive.
  */
 
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
 
 import 'map_components/drawing_manager.dart';
@@ -22,6 +24,8 @@ class ExchangeScreen extends StatefulWidget {
 }
 
 class _ExchangeScreenState extends State<ExchangeScreen> {
+  bool _isMapTransferring = false;
+  String _mapTransferStatus = '';
   
   // ==========================================================
   // ТАКТИЧЕСКАЯ РАЗМЕТКА
@@ -37,9 +41,11 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
 
     try {
       final path = await DrawingStorage().prepareExportFile(pointsAndLines);
-      await Share.shareXFiles(
-        [XFile(path, mimeType: 'application/json')], 
-        text: 'Тактическая разметка Naviga',
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(path, mimeType: 'application/json')],
+          text: 'Тактическая разметка Naviga',
+        ),
       );
     } catch (e) {
       _showError('Ошибка экспорта разметки: $e');
@@ -157,15 +163,109 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
   }
 
   // ==========================================================
-  // ОФФЛАЙН КАРТЫ
+  // ОФФЛАЙН КАРТЫ (ЭКСПОРТ/ИМПОРТ v9.0.1 API)
   // ==========================================================
-  void _futureFeature() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Эта функция будет доступна в следующих версиях.'),
-        backgroundColor: Colors.blueGrey,
-      ),
-    );
+  Future<void> _exportMapCache() async {
+    setState(() {
+      _isMapTransferring = true;
+      _mapTransferStatus = 'Формирование архива карт (это может занять время)...';
+    });
+    
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/naviga_maps.fmtc');
+      if (await file.exists()) {
+        await file.delete();
+      }
+
+      // API v9.0.1: Экспорт через RootExternal с именованным параметром pathToArchive
+      await FMTCRoot.external(pathToArchive: file.path).export(
+        storeNames: ['NavigaStore'],
+      );
+
+      setState(() {
+        _mapTransferStatus = 'Передача файла операционной системе...';
+      });
+
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path, mimeType: 'application/octet-stream')],
+          text: 'Экспортированный кэш оффлайн-карт Naviga',
+        ),
+      );
+    } catch (e) {
+      _showError('Ошибка экспорта кэша карт: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isMapTransferring = false;
+          _mapTransferStatus = '';
+        });
+      }
+    }
+  }
+
+  Future<void> _importMapCache() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.any);
+      if (!mounted) return;
+      if (result != null && result.files.single.path != null) {
+        final path = result.files.single.path!;
+
+        final confirm = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Импорт оффлайн-карт'),
+            content: const Text('Выбранные карты будут добавлены к вашей текущей базе. Существующие тайлы дублироваться не будут. Начать импорт?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('ОТМЕНА'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                style: TextButton.styleFrom(foregroundColor: Colors.blue),
+                child: const Text('ИМПОРТИРОВАТЬ'),
+              ),
+            ],
+          ),
+        );
+        if (!mounted) return;
+
+        if (confirm != true) return;
+
+        setState(() {
+          _isMapTransferring = true;
+          _mapTransferStatus = 'Интеграция новых тайлов в базу данных...';
+        });
+
+        // API v9.0.1: Импорт через RootExternal с именованным параметром pathToArchive
+        await FMTCRoot.external(pathToArchive: path)
+            .import(storeNames: ['NavigaStore'],
+            strategy: ImportConflictStrategy.merge).complete;
+
+        // ЭТОТ КУСОК РЕШАЕТ ПРОБЛЕМУ:
+        // Принудительно сбрасываем инстанс магазина, чтобы он 
+        // перечитал данные с диска при следующем обращении к stats
+        // await FMTCStore('NavigaStore').manage.reset();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Импорт оффлайн-карт успешно завершен.'))
+          );
+          setState(() {}); // Обновление дисковой статистики на UI
+        }
+      }
+    } catch (e) {
+      _showError('Ошибка импорта кэша карт: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isMapTransferring = false;
+          _mapTransferStatus = '';
+        });
+      }
+    }
   }
 
   Future<String> _getCacheSize() async {
@@ -263,10 +363,12 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
                 subtitle: 'Управление массивом скачанных географических тайлов.',
                 statsText: 'Выделено регионов: $regionsCount\nОбъем кэша на диске: $sizeText',
                 icon: Icons.map_outlined,
-                onSend: _futureFeature,
-                onLoad: _futureFeature,
+                onSend: _exportMapCache,
+                onLoad: _importMapCache,
                 onClear: _confirmClearCache,
                 clearText: 'ОЧИСТИТЬ ВЕСЬ КЭШ КАРТ',
+                isLoading: _isMapTransferring,
+                loadingStatus: _mapTransferStatus,
               );
             },
           ),
@@ -284,6 +386,8 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
     required VoidCallback onLoad,
     required VoidCallback onClear,
     required String clearText,
+    bool isLoading = false,
+    String loadingStatus = '',
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     return Card(
@@ -306,38 +410,49 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
             const SizedBox(height: 8),
             Text(subtitle, style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant)),
             const Divider(height: 24),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: onSend,
-                    icon: const Icon(Icons.send_rounded, size: 20),
-                    label: const Text('ЭКСПОРТ'),
-                    style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: onLoad,
-                    icon: const Icon(Icons.download_rounded, size: 20),
-                    label: const Text('ИМПОРТ'),
-                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: onClear, // ИСПРАВЛЕНИЕ: Добавлен именованный параметр
-              icon: const Icon(Icons.delete_forever),
-              label: Text(clearText),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: colorScheme.error,
-                side: BorderSide(color: colorScheme.error.withOpacity(0.5)),
-                padding: const EdgeInsets.symmetric(vertical: 12),
+            
+            if (isLoading) ...[
+              const LinearProgressIndicator(),
+              const SizedBox(height: 8),
+              Text(
+                loadingStatus, 
+                style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: colorScheme.onSurfaceVariant),
+                textAlign: TextAlign.center,
               ),
-            ),
+            ] else ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: onSend,
+                      icon: const Icon(Icons.send_rounded, size: 20),
+                      label: const Text('ЭКСПОРТ'),
+                      style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: onLoad,
+                      icon: const Icon(Icons.download_rounded, size: 20),
+                      label: const Text('ИМПОРТ'),
+                      style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: onClear, 
+                icon: const Icon(Icons.delete_forever),
+                label: Text(clearText),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: colorScheme.error,
+                  side: BorderSide(color: colorScheme.error.withValues(alpha: 0.5)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ],
           ],
         ),
       ),
