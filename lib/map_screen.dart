@@ -30,6 +30,7 @@ import 'map_components/nodes_layer.dart';
 import 'map_components/region_selection_layer.dart';
 
 class MapScreen extends StatefulWidget {
+  // Флаг, определяющий режим запуска экрана (штатная карта или режим выделения квадрата для скачивания)
   final bool isOfflineSelectMode; 
 
   const MapScreen({
@@ -42,6 +43,7 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
+  // Инициализация синглтонов и контроллеров
   final BleService _bleService = BleService();
   final MapController _mapController = MapController();
   final DrawingController _drawingController = DrawingController();
@@ -50,10 +52,12 @@ class _MapScreenState extends State<MapScreen> {
   late int _lastCompassMode;
   bool _isMapReady = false;
 
+  // Инструмент рисования по умолчанию (режим просмотра)
   DrawingTool _activeTool = DrawingTool.view;
   List<LatLng> _currentDrawingLinePath = [];
   bool _isRegionDrawingActive = false; 
 
+  // Координаты для свободного перемещения плавающего виджета загрузки
   double _downloadWidgetX = 16.0;
   double _downloadWidgetY = 100.0;
 
@@ -61,13 +65,15 @@ class _MapScreenState extends State<MapScreen> {
   void initState() {
     super.initState();
     _lastCompassMode = AppSettings().compassMode;
+    // Удержание экрана во включенном состоянии (Wakelock)
     if (AppSettings().keepScreenOn) WakelockPlus.enable();
     AppSettings().addListener(_onSettingsChanged);
-    DrawingManager().load();
+    DrawingManager().load(); // Загрузка сохраненной тактической разметки из БД
   }
 
   @override
   void dispose() {
+    // Освобождение ресурсов при закрытии экрана
     AppSettings().removeListener(_onSettingsChanged);
     _compassSubscription?.cancel();
     WakelockPlus.disable();
@@ -76,6 +82,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _onSettingsChanged() {
+    // Реакция на изменение настроек компаса в глобальном стейте
     if (_lastCompassMode != AppSettings().compassMode) {
       _lastCompassMode = AppSettings().compassMode;
       _applyCompassMode();
@@ -85,6 +92,8 @@ class _MapScreenState extends State<MapScreen> {
   void _applyCompassMode() {
     if (!_isMapReady) return;
     
+    // В режиме выбора оффлайн-карты компас принудительно отключается, 
+    // чтобы рамка не искажалась вращением карты
     if (widget.isOfflineSelectMode) {
       _compassSubscription?.cancel();
       _compassSubscription = null;
@@ -93,6 +102,7 @@ class _MapScreenState extends State<MapScreen> {
     }
 
     final mode = AppSettings().compassMode;
+    // Mode 2: Авто-вращение карты по магнитному компасу устройства
     if (mode == 2) {
       _compassSubscription ??= FlutterCompass.events?.listen((event) {
           if (event.heading != null && mounted) {
@@ -100,13 +110,15 @@ class _MapScreenState extends State<MapScreen> {
           }
         });
     } else {
+      // Иначе (Mode 0 или 1) отключаем подписку
       _compassSubscription?.cancel();
       _compassSubscription = null;
-      if (mode == 0) _mapController.rotate(0);
+      if (mode == 0) _mapController.rotate(0); // Фиксация на Север
     }
   }
 
   Widget _buildOfflineRegionToolbar() {
+    // Панель инструментов (одна кнопка) для экрана оффлайн-карт
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -125,6 +137,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Widget _buildDraggableDownloadWidget() {
+    // Плавающий виджет статуса загрузки, который появляется, если OfflineMapManager активен
     return ListenableBuilder(
       listenable: OfflineMapManager(),
       builder: (context, child) {
@@ -137,6 +150,7 @@ class _MapScreenState extends State<MapScreen> {
           left: _downloadWidgetX,
           top: _downloadWidgetY,
           child: GestureDetector(
+            // Логика перемещения виджета пальцем по экрану
             onPanUpdate: (details) {
               setState(() {
                 _downloadWidgetX = math.max(0, _downloadWidgetX + details.delta.dx);
@@ -164,11 +178,12 @@ class _MapScreenState extends State<MapScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            manager.currentRegionName,
+                            manager.currentRegionName, // Имя текущего скачиваемого региона
                             style: const TextStyle(fontWeight: FontWeight.bold),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
+                        // Кнопка принудительной отмены загрузки оператором
                         InkWell(
                           onTap: () => manager.cancelDownload(),
                           child: Icon(Icons.cancel, size: 20, color: colorScheme.error),
@@ -176,6 +191,7 @@ class _MapScreenState extends State<MapScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
+                    // Визуализация процесса загрузки на основе данных от FMTC
                     LinearProgressIndicator(
                       value: manager.progressPercentage / 100.0,
                       backgroundColor: colorScheme.surfaceVariant,
@@ -215,6 +231,7 @@ class _MapScreenState extends State<MapScreen> {
       ),
       body: Stack(
         children: [
+          // Основной строитель слоя карты реагирует на изменения в базе нодов и настройках
           ListenableBuilder(
             listenable: Listenable.merge([
               _bleService.nodeDatabase,
@@ -226,27 +243,31 @@ class _MapScreenState extends State<MapScreen> {
               final nodes = _bleService.nodeDatabase.nodes.values.where((n) => n.hasValidGps);
               final myId = _bleService.identityNotifier.value?.myNodeId;
 
+              // Центрирование камеры при запуске (фокус на себе, если есть GPS)
               LatLng initialCenter = const LatLng(0, 0);
               if (nodes.isNotEmpty) {
                 final myNode = nodes.firstWhere((n) => n.nodeId == myId, orElse: () => nodes.first);
                 initialCenter = LatLng(myNode.lat, myNode.lon);
               }
 
+              // Настройка интерактивности карты (зум, драг, вращение)
               int interactiveFlags = InteractiveFlag.all;
               if (widget.isOfflineSelectMode) {
-                interactiveFlags = interactiveFlags & ~InteractiveFlag.rotate;
+                interactiveFlags = interactiveFlags & ~InteractiveFlag.rotate; // Запрет вращения
+                // Если оператор рисует рамку, запрещаем перемещение самой карты (drag)
                 if (_isRegionDrawingActive) interactiveFlags = interactiveFlags & ~InteractiveFlag.drag; 
               } else if (AppSettings().compassMode != 1) {
-                interactiveFlags = interactiveFlags & ~InteractiveFlag.rotate;
+                interactiveFlags = interactiveFlags & ~InteractiveFlag.rotate; // Запрет ручного вращения, если режим не свободный
               }
 
+              // Выбор провайдера тайлов (Онлайн напрямую ИЛИ через локальный кэш ObjectBox)
               TileProvider tileProvider;
               if (AppSettings().mapNetworkMode == 2) {
-                tileProvider = NetworkTileProvider();
+                tileProvider = NetworkTileProvider(); // Прямой провайдер из интернета
               } else {
                 final cacheBehavior = AppSettings().mapNetworkMode == 1
-                    ? CacheBehavior.cacheOnly
-                    : CacheBehavior.cacheFirst; 
+                    ? CacheBehavior.cacheOnly // Жесткий оффлайн (только с диска)
+                    : CacheBehavior.cacheFirst; // Гибрид (сначала диск, потом сеть)
                     
                 tileProvider = FMTCStore('NavigaStore').getTileProvider(
                   settings: FMTCTileProviderSettings(behavior: cacheBehavior), 
@@ -259,6 +280,7 @@ class _MapScreenState extends State<MapScreen> {
                   initialCenter: initialCenter,
                   initialZoom: 15.0,
                   interactionOptions: InteractionOptions(flags: interactiveFlags),
+                  // Обработчик тапов (для рисования точек/линий) передается в контроллер разметки
                   onTap: (tapPosition, latLng) {
                     _drawingController.handleDrawingTap(
                       context: context,
@@ -271,12 +293,14 @@ class _MapScreenState extends State<MapScreen> {
                   },
                   onMapReady: () {
                     _isMapReady = true;
-                    _applyCompassMode();
+                    _applyCompassMode(); // Активируем компас, когда карта полностью прогрузилась
                     setState(() {});
                   },
                 ),
                 children: [
+                  // Слой базовой карты (Тайлы OSM)
                   if (AppSettings().invertMapColors)
+                    // Матрица инверсии цветов (режим ночного видения / темная тема карты)
                     ColorFiltered(
                       colorFilter: const ColorFilter.matrix(<double>[
                         -1, 0, 0, 0, 255, 0, -1, 0, 0, 255, 0, 0, -1, 0, 255, 0, 0, 0, 1, 0,
@@ -288,16 +312,20 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                     )
                   else
+                    // Обычная светлая тема карты
                     TileLayer(
                       urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                       userAgentPackageName: 'com.michroz2.naviga_operator',
                       tileProvider: tileProvider, 
                     ),
                   
+                  // Слой тактической сетки (координатная решетка)
                   if (_isMapReady && AppSettings().showGrid) const MapGridLayer(),
 
+                  // Слой отображения ранее нарисованных объектов разметки
                   const MapDrawingLayer(),
 
+                  // Слой интерактивного выделения прямоугольного региона (только в спец. режиме)
                   if (widget.isOfflineSelectMode && _isRegionDrawingActive)
                     RegionSelectionLayer(
                       mapController: _mapController,
@@ -307,6 +335,10 @@ class _MapScreenState extends State<MapScreen> {
                         // ==========================================================
                         // РУБЕЖ 1: PRE-FLIGHT CHECK (Проверка связи с сервером)
                         // ==========================================================
+                        // Перед тем как начать долгую процедуру скачивания тайлов, 
+                        // делаем быстрый нативный DNS-lookup/Ping до сервера OSM.
+                        // Если соединения нет, прерываем операцию, не допуская старта FMTC менеджера,
+                        // чтобы избежать "ложного прогресса" и пустой очереди ошибок.
                         try {
                           final result = await InternetAddress.lookup('tile.openstreetmap.org');
                           if (result.isEmpty || result[0].rawAddress.isEmpty) {
@@ -314,29 +346,35 @@ class _MapScreenState extends State<MapScreen> {
                           }
                         } catch (_) {
                           if (mounted) {
+                            // Оповещаем оператора об отсутствии линка
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text('Нет соединения с сервером карт. Загрузка невозможна.'),
                                 backgroundColor: Colors.red,
                               )
                             );
+                            // Сбрасываем инструмент выделения
                             setState(() => _isRegionDrawingActive = false);
                           }
                           return; // Жестко прерываем выполнение, к менеджеру не обращаемся
                         }
 
-                        // Если интернет есть, продолжаем стандартную логику
+                        // Если интернет есть, продолжаем стандартную логику:
+                        // 1. Сохраняем регион (рамку) в базу разметки
                         DrawingManager().addElement(newRegion);
+                        // 2. Передаем регион в менеджер загрузок для старта процесса
                         OfflineMapManager().downloadRegion(newRegion);
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(content: Text('Загрузка региона "${newRegion.label}" запущена в фоне'))
                           );
                         }
+                        // Отключаем режим рисования рамки
                         setState(() => _isRegionDrawingActive = false);
                       },
                     ),
 
+                  // Слой рендеринга активной линии (маршрута), которая рисуется прямо сейчас
                   if (_currentDrawingLinePath.length > 1 && !widget.isOfflineSelectMode)
                     PolylineLayer(
                       polylines: [
@@ -348,13 +386,17 @@ class _MapScreenState extends State<MapScreen> {
                       ],
                     ),
                     
+                  // Слой отображения меток других операторов (узлов Mesh сети)
                   NodesLayer(isInteractive: _activeTool == DrawingTool.view && !widget.isOfflineSelectMode),
                   
+                  // Элементы UI поверх карты (Масштабная линейка)
                   const Align(alignment: Alignment.bottomLeft, child: MapScaleBar()),
                   
+                  // Виджет компаса (скрывается в режиме выделения оффлайн карт)
                   if (!widget.isOfflineSelectMode)
                     const Align(alignment: Alignment.topRight, child: SafeArea(child: MapCompassWidget())),
 
+                  // Панель инструментов: либо кнопка рамки (для кэша), либо полный тулбар разметки
                   if (widget.isOfflineSelectMode)
                     Align(
                       alignment: Alignment.topLeft,
@@ -374,6 +416,7 @@ class _MapScreenState extends State<MapScreen> {
                               final previousTool = _activeTool;
                               setState(() => _activeTool = tool);
                               
+                              // Завершение рисования линии при переключении инструмента
                               if (previousTool == DrawingTool.line && tool != DrawingTool.line) {
                                 _drawingController.processLineCompletion(
                                   context: context,
@@ -391,9 +434,11 @@ class _MapScreenState extends State<MapScreen> {
             },
           ),
           
+          // Рендер плавающего окна загрузки оффлайн-карты (если процесс активен)
           _buildDraggableDownloadWidget(),
         ],
       ),
+      // Кнопка центрирования камеры на позиции оператора (своего узла)
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           final myId = _bleService.identityNotifier.value?.myNodeId;
