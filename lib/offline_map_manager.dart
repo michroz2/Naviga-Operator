@@ -8,7 +8,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+//import 'package:latlong2/latlong.dart';
 import 'map_components/drawing_models.dart';
 import 'map_components/drawing_manager.dart'; // ИЗМЕНЕНИЕ: Доступ к разметке
 

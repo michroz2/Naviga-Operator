@@ -23,7 +23,7 @@ import 'map_components/map_compass.dart';
 import 'map_components/map_grid_layer.dart'; 
 import 'map_components/drawing_toolbar.dart';
 import 'map_components/drawing_manager.dart';
-import 'map_components/drawing_models.dart';
+//import 'map_components/drawing_models.dart';
 import 'map_components/drawing_layer.dart';
 import 'map_components/drawing_controller.dart';
 import 'map_components/nodes_layer.dart';

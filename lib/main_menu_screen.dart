@@ -9,7 +9,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'app_config.dart';
+//import 'app_config.dart';
 import 'ble_protocol.dart';
 import 'ble_service.dart';
 import 'roster_screen.dart';
