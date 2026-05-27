@@ -1,7 +1,7 @@
 /*
  * Файл: scanner_screen.dart
- * Версия: 1.32.9
- * Изменения: ЭТАП Настроек, Шаг 9 (Финал). UI-рефакторинг для поддержки Тёмной темы. Жесткий цвет кнопки поиска заменен на динамический Theme.of(context).colorScheme.
+ * Версия: 1.41.0
+ * Изменения: Добавлен автоматический старт сканирования при инициализации экрана (холодный старт) и при возврате из главного меню (после отключения).
  * Описание: Экран сканирования BLE устройств.
  */
 
@@ -21,6 +21,13 @@ class ScannerScreen extends StatefulWidget {
 
 class _ScannerScreenState extends State<ScannerScreen> {
   final BleService _bleService = BleService();
+
+  @override
+  void initState() {
+    super.initState();
+    // Автоматический запуск сканирования при холодном старте экрана
+    _bleService.startScan();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +62,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                   label: Text(isScanning ? 'Идет поиск...' : 'Поиск Донглов'),
                   style: ElevatedButton.styleFrom(
                     minimumSize: const Size.fromHeight(50),
-                    // ИЗМЕНЕНИЕ 1.32.9: Динамические контрастные цвета вместо жесткого Colors.blue.shade100
+                    // Динамические контрастные цвета вместо жесткого Colors.blue.shade100
                     backgroundColor: colorScheme.primaryContainer,
                     foregroundColor: colorScheme.onPrimaryContainer,
                   ),
@@ -87,10 +94,12 @@ class _ScannerScreenState extends State<ScannerScreen> {
                             await _bleService.connectToDevice(r.device);
                             // Самопроверка: переход только при успешном соединении
                             if (_bleService.isConnected.value && context.mounted) {
-                              Navigator.push(
+                              await Navigator.push(
                                 context,
                                 MaterialPageRoute(builder: (context) => const MainMenuScreen()),
                               );
+                              // Автоматический запуск сканирования при возврате на этот экран (после отключения)
+                              _bleService.startScan();
                             }
                           },
                           child: const Text('Connect'),
