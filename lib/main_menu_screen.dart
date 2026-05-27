@@ -1,24 +1,24 @@
 /*
  * Файл: main_menu_screen.dart
- * Версия: 1.39.7
+ * Версия: 1.41.4
  * Описание: Главный дашборд управления Донглом.
- * Изменения: Карточка Оффлайн-карт теперь реагирует на состояние фоновой загрузки (UC-24).
+ * Изменения: Карточка телеметрии адаптирована для горячего реконнекта (UC-25): сохраняет данные батареи и выводит статус автопоиска.
  */
 
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-//import 'app_config.dart';
 import 'ble_protocol.dart';
 import 'ble_service.dart';
 import 'roster_screen.dart';
 import 'map_screen.dart';
 import 'settings_screen.dart';
 import 'exchange_screen.dart'; 
+import 'app_settings.dart';
 
 import 'map_components/drawing_manager.dart';
-import 'offline_map_manager.dart'; // ИЗМЕНЕНИЕ: Добавлен импорт
+import 'offline_map_manager.dart';
 
 class MainMenuScreen extends StatefulWidget {
   const MainMenuScreen({super.key});
@@ -44,7 +44,8 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   }
 
   void _connectionListener() {
-    if (!_bleService.isConnected.value && mounted) {
+    // ИЗМЕНЕНИЕ 1.41.4: Выбрасываем на сканер только если соединение разорвано И ID в настройках пуст (ручной клик "Отключить")
+    if (!_bleService.isConnected.value && AppSettings().savedDongleId.isEmpty && mounted) {
       Navigator.of(context).popUntil((route) => route.isFirst);
     }
   }
@@ -81,7 +82,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               ElevatedButton.icon(
                 onPressed: () => _bleService.disconnect(),
                 icon: const Icon(Icons.bluetooth_disabled),
-                // Оборачиваем label в builder для реактивного обновления имени
                 label: ValueListenableBuilder<String>(
                   valueListenable: _bleService.connectedDeviceName,
                   builder: (context, deviceName, child) {
@@ -180,10 +180,14 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               ),
               const SizedBox(height: 10),
 
-              ValueListenableBuilder<BleEvtMyStatus?>(
-                valueListenable: _bleService.myStatusNotifier,
-                builder: (context, status, child) {
-                  if (status == null) {
+              // ИЗМЕНЕНИЕ 1.41.4: Перевод карточки телеметрии на совместный ListenableBuilder
+              ListenableBuilder(
+                listenable: Listenable.merge([_bleService.myStatusNotifier, _bleService.isReconnecting]),
+                builder: (context, child) {
+                  final status = _bleService.myStatusNotifier.value;
+                  final isReconnecting = _bleService.isReconnecting.value;
+
+                  if (status == null && !isReconnecting) {
                     return const Card(
                       elevation: 4,
                       child: Padding(
@@ -193,29 +197,31 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                     );
                   }
 
-                  String gpsText;
-                  Color gpsColor;
+                  String gpsText = '';
+                  Color gpsColor = Colors.black;
                   bool showAnchorButton = false;
 
-                  switch (status.gpsState) {
-                    case 0:
-                      gpsText = 'Поиск спутников...';
-                      gpsColor = Colors.orange.shade700;
-                      showAnchorButton = true; 
-                      break;
-                    case 1:
-                      gpsText = 'Зафиксирован (Fix OK)';
-                      gpsColor = Colors.green.shade700;
-                      showAnchorButton = false; 
-                      break;
-                    case 2:
-                      gpsText = 'Нет'; 
-                      gpsColor = Colors.blueGrey;
-                      showAnchorButton = true; 
-                      break;
-                    default:
-                      gpsText = 'Неизвестный статус (${status.gpsState})';
-                      gpsColor = colorScheme.error;
+                  if (status != null) {
+                    switch (status.gpsState) {
+                      case 0:
+                        gpsText = 'Поиск спутников...';
+                        gpsColor = Colors.orange.shade700;
+                        showAnchorButton = true; 
+                        break;
+                      case 1:
+                        gpsText = 'Зафиксирован (Fix OK)';
+                        gpsColor = Colors.green.shade700;
+                        showAnchorButton = false; 
+                        break;
+                      case 2:
+                        gpsText = 'Нет'; 
+                        gpsColor = Colors.blueGrey;
+                        showAnchorButton = true; 
+                        break;
+                      default:
+                        gpsText = 'Неизвестный статус (${status.gpsState})';
+                        gpsColor = colorScheme.error;
+                    }
                   }
 
                   return Card(
@@ -225,39 +231,61 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Row(
+                          Row(
                             children: [
-                              Icon(Icons.speed, color: Colors.blueGrey),
-                              SizedBox(width: 8),
-                              Text('Телеметрия Донгла', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                              Icon(Icons.warning_amber_rounded, color: isReconnecting ? Colors.orange : Colors.blueGrey),
+                              const SizedBox(width: 8),
+                              Text(
+                                isReconnecting ? 'Связь потеряна' : 'Телеметрия Донгла', 
+                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)
+                              ),
                             ],
                           ),
                           const Divider(),
-                          Text('Батарея: ${status.batteryPercent}% (${(status.batteryVoltage / 1000).toStringAsFixed(2)} В)', style: const TextStyle(fontSize: 16)),
-                          Row(
-                            children: [
-                              const Text('GPS: ', style: TextStyle(fontSize: 16)),
-                              Text(gpsText, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: gpsColor)),
-                            ],
-                          ),
-                          if (status.gpsState != 2)
-                            Text('Спутники: ${status.satellites}', style: const TextStyle(fontSize: 16)),
+                          // Показываем батарею всегда (если status != null), даже во время реконнекта
+                          if (status != null)
+                            Text('Батарея: ${status.batteryPercent}% (${(status.batteryVoltage / 1000).toStringAsFixed(2)} В)', style: const TextStyle(fontSize: 16))
+                          else
+                            const Text('Батарея: ---%', style: TextStyle(fontSize: 16)),
                           
-                          if (showAnchorButton) ...[
-                            const SizedBox(height: 14),
-                            const Divider(height: 1),
+                          if (isReconnecting) ...[
                             const SizedBox(height: 12),
-                            ElevatedButton.icon(
-                              onPressed: () => _bleService.sendAnchorCoords(),
-                              icon: const Icon(Icons.pin_drop_rounded),
-                              label: const Text('ПЕРЕДАТЬ КООРДИНАТЫ СМАРТФОНА (ANCHOR)'),
-                              style: ElevatedButton.styleFrom(
-                                minimumSize: const Size.fromHeight(45),
-                                backgroundColor: colorScheme.tertiaryContainer,
-                                foregroundColor: colorScheme.onTertiaryContainer,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
+                            Row(
+                              children: [
+                                const Icon(Icons.bluetooth_disabled, color: Colors.orange),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'ОБРЫВ СВЯЗИ. АВТОПОИСК...', 
+                                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.orange.shade800)
+                                ),
+                              ],
                             ),
+                          ] else ...[
+                            Row(
+                              children: [
+                                const Text('GPS: ', style: TextStyle(fontSize: 16)),
+                                Text(gpsText, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: gpsColor)),
+                              ],
+                            ),
+                            if (status!.gpsState != 2)
+                              Text('Спутники: ${status.satellites}', style: const TextStyle(fontSize: 16)),
+                            
+                            if (showAnchorButton) ...[
+                              const SizedBox(height: 14),
+                              const Divider(height: 1),
+                              const SizedBox(height: 12),
+                              ElevatedButton.icon(
+                                onPressed: () => _bleService.sendAnchorCoords(),
+                                icon: const Icon(Icons.pin_drop_rounded),
+                                label: const Text('ПЕРЕДАТЬ КООРДИНАТЫ СМАРТФОНА (ANCHOR)'),
+                                style: ElevatedButton.styleFrom(
+                                  minimumSize: const Size.fromHeight(45),
+                                  backgroundColor: colorScheme.tertiaryContainer,
+                                  foregroundColor: colorScheme.onTertiaryContainer,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                              ),
+                            ],
                           ],
                         ],
                       ),
@@ -362,7 +390,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               ),
               const SizedBox(height: 10),
 
-              // ИЗМЕНЕНИЕ 1.39.7: Динамическое состояние загрузки на дашборде
               ListenableBuilder(
                 listenable: OfflineMapManager(),
                 builder: (context, child) {

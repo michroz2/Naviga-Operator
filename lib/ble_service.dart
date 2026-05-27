@@ -1,7 +1,7 @@
 /*
  * Файл: ble_service.dart
- * Версия: 1.41.3
- * Изменения: Интеграция сохранения/восстановления пары ID и имени устройства через AppSettings.
+ * Версия: 1.41.4
+ * Изменения: Реализован механизм горячего переподключения при аварийном обрыве связи (Listen connectionState) с сохранением кэша телеметрии.
  * Описание: BLE-сервис управления соединением и диспетчеризации пакетов.
  */
 
@@ -14,7 +14,7 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'ble_protocol.dart';
 import 'node_database.dart';
 import 'app_logger.dart';
-import 'app_settings.dart'; // ИЗМЕНЕНИЕ: Импорт настроек
+import 'app_settings.dart';
 
 class BleService {
   static final BleService _instance = BleService._internal();
@@ -26,9 +26,11 @@ class BleService {
   BluetoothCharacteristic? _txCharacteristic;
 
   StreamSubscription<List<ScanResult>>? _scanSubscription;
+  StreamSubscription<BluetoothConnectionState>? _connectionStateSubscription; // ИЗМЕНЕНИЕ 1.41.4
 
   final ValueNotifier<bool> isScanning = ValueNotifier(false);
   final ValueNotifier<bool> isConnected = ValueNotifier(false);
+  final ValueNotifier<bool> isReconnecting = ValueNotifier(false); // ИЗМЕНЕНИЕ 1.41.4
   final ValueNotifier<List<ScanResult>> scanResultsNotifier = ValueNotifier([]);
   final ValueNotifier<String> connectedDeviceName = ValueNotifier('');
   
@@ -79,20 +81,19 @@ class BleService {
       await device.connect(license: License.free, autoConnect: false);
       _connectedDevice = device;
       
-      // ИЗМЕНЕНИЕ: Проверяем, есть ли имя устройства в объекте (при ручном сканировании оно есть)
       String platformName = device.platformName.isEmpty ? device.advName : device.platformName;
       
       if (platformName.isNotEmpty) {
-        // Ручное подключение: обновляем кэш имени и ID в настройках
         connectedDeviceName.value = platformName;
         AppSettings().setSavedDongleId(device.remoteId.toString());
         AppSettings().setSavedDongleName(platformName);
       } else {
-        // Автоподключение: имя из эфира не получено, берем последнее известное из памяти
         connectedDeviceName.value = AppSettings().savedDongleName;
       }
       
       isConnected.value = true;
+      isReconnecting.value = false; // ИЗМЕНЕНИЕ 1.41.4
+      
       AppLogger.logInfo('Подключение успешно. Запрос MTU и поиск сервисов...');
       
       if (defaultTargetPlatform == TargetPlatform.android) {
@@ -124,9 +125,88 @@ class BleService {
       } else {
         AppLogger.logError('Не найдены нужные характеристики (TX/RX)');
       }
+
+      // ИЗМЕНЕНИЕ 1.41.4: Регистрация слушателя состояния соединения
+      _setupConnectionListener(device);
+
     } catch (e) {
       isConnected.value = false;
       AppLogger.logError('Ошибка подключения: $e');
+    }
+  }
+
+  // ИЗМЕНЕНИЕ 1.41.4: Метод отслеживания аварийного дисконнекта
+  void _setupConnectionListener(BluetoothDevice device) {
+    _connectionStateSubscription?.cancel();
+    _connectionStateSubscription = device.connectionState.listen((state) {
+      if (state == BluetoothConnectionState.disconnected) {
+        // Если обрыв произошел, но ID в настройках есть — это авария, а не ручной выход
+        if (AppSettings().savedDongleId.isNotEmpty && isConnected.value) {
+          isReconnecting.value = true;
+          isConnected.value = false;
+          
+          _rxCharacteristic = null;
+          _txCharacteristic = null;
+          identityNotifier.value = null;
+          sysConfigNotifier.value = null;
+          // myStatusNotifier НЕ зануляем, чтобы сохранить последний снимок батареи на карточке
+          
+          AppLogger.logError('Аварийный обрыв связи! Запуск фонового автопереподключения...');
+          _attemptReconnect();
+        }
+      }
+    });
+  }
+
+  // ИЗМЕНЕНИЕ 1.41.4: Рекурсивный цикл горячего переподключения
+  Future<void> _attemptReconnect() async {
+    while (AppSettings().savedDongleId.isNotEmpty && !isConnected.value) {
+      await Future.delayed(const Duration(seconds: 4));
+      if (AppSettings().savedDongleId.isEmpty || isConnected.value) break;
+
+      AppLogger.logInfo('Попытка восстановления связи с Донглом...');
+      try {
+        final device = BluetoothDevice.fromId(AppSettings().savedDongleId);
+        await device.connect(license: License.free, autoConnect: false, timeout: const Duration(seconds: 5));
+        
+        _connectedDevice = device;
+        connectedDeviceName.value = AppSettings().savedDongleName;
+        isConnected.value = true;
+        isReconnecting.value = false;
+
+        if (defaultTargetPlatform == TargetPlatform.android) {
+          await device.requestMtu(128); 
+        }
+        
+        List<BluetoothService> services = await device.discoverServices();
+        for (BluetoothService service in services) {
+          if (service.uuid.toString().toLowerCase() == BleConfig.serviceUuid.toLowerCase()) {
+            for (BluetoothCharacteristic char in service.characteristics) {
+              String charUuid = char.uuid.toString().toLowerCase();
+              if (charUuid == BleConfig.rxCharacteristicUuid.toLowerCase()) {
+                _rxCharacteristic = char;
+              } else if (charUuid == BleConfig.txCharacteristicUuid.toLowerCase()) {
+                _txCharacteristic = char;
+              }
+            }
+          }
+        }
+        
+        if (_txCharacteristic != null && _rxCharacteristic != null) {
+          await _txCharacteristic!.setNotifyValue(true);
+          _txCharacteristic!.lastValueStream.listen(_handleIncomingData);
+          _requestIdentity();
+          
+          FlutterBackgroundService().startService();
+          Future.delayed(const Duration(seconds: 1), _updateBackgroundNotification);
+        }
+        
+        _setupConnectionListener(device);
+        AppLogger.logInfo('Связь с Донглом успешно восстановлена на лету.');
+        break;
+      } catch (e) {
+        AppLogger.logError('Неудачный автореконнект: $e. Ожидание следующего цикла...');
+      }
     }
   }
 
@@ -315,9 +395,13 @@ class BleService {
   Future<void> disconnect() async {
     AppLogger.logInfo('Отключение от устройства...');
     
-    // ИЗМЕНЕНИЕ: Полностью сбрасываем пару сохраненных параметров в памяти при явном отключении
     AppSettings().setSavedDongleId('');
     AppSettings().setSavedDongleName('');
+    
+    // ИЗМЕНЕНИЕ 1.41.4: Отмена подписок при штатном закрытии сессии
+    _connectionStateSubscription?.cancel();
+    _connectionStateSubscription = null;
+    isReconnecting.value = false;
 
     FlutterBackgroundService().invoke('stopService');
 
