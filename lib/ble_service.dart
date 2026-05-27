@@ -1,7 +1,7 @@
 /*
  * Файл: ble_service.dart
- * Версия: 1.30
- * Изменения: ЭТАП 4, Шаг 15. Добавлен метод _updateBackgroundNotification для проброса телеметрии в изолированный фоновый поток через шину сообщений (invoke).
+ * Версия: 1.41.3
+ * Изменения: Интеграция сохранения/восстановления пары ID и имени устройства через AppSettings.
  * Описание: BLE-сервис управления соединением и диспетчеризации пакетов.
  */
 
@@ -14,6 +14,7 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'ble_protocol.dart';
 import 'node_database.dart';
 import 'app_logger.dart';
+import 'app_settings.dart'; // ИЗМЕНЕНИЕ: Импорт настроек
 
 class BleService {
   static final BleService _instance = BleService._internal();
@@ -61,7 +62,6 @@ class BleService {
     });
   }
 
-  // Проброс данных в фоновый процесс
   void _updateBackgroundNotification() {
     if (!isConnected.value) return;
     final status = myStatusNotifier.value;
@@ -78,9 +78,21 @@ class BleService {
     try {
       await device.connect(license: License.free, autoConnect: false);
       _connectedDevice = device;
-      connectedDeviceName.value = device.platformName.isEmpty ? device.advName : device.platformName;
-      isConnected.value = true;
       
+      // ИЗМЕНЕНИЕ: Проверяем, есть ли имя устройства в объекте (при ручном сканировании оно есть)
+      String platformName = device.platformName.isEmpty ? device.advName : device.platformName;
+      
+      if (platformName.isNotEmpty) {
+        // Ручное подключение: обновляем кэш имени и ID в настройках
+        connectedDeviceName.value = platformName;
+        AppSettings().setSavedDongleId(device.remoteId.toString());
+        AppSettings().setSavedDongleName(platformName);
+      } else {
+        // Автоподключение: имя из эфира не получено, берем последнее известное из памяти
+        connectedDeviceName.value = AppSettings().savedDongleName;
+      }
+      
+      isConnected.value = true;
       AppLogger.logInfo('Подключение успешно. Запрос MTU и поиск сервисов...');
       
       if (defaultTargetPlatform == TargetPlatform.android) {
@@ -265,7 +277,7 @@ class BleService {
           final pkt = BleEvtMyStatus.fromBytes(data);
           AppLogger.logRxMyStatus(pkt);
           myStatusNotifier.value = pkt;
-          _updateBackgroundNotification(); // ИЗМЕНЕНИЕ 1.30: Обновляем шторку при получении телеметрии
+          _updateBackgroundNotification();
           break;
           
         case BleOpCode.evtNodeUpdate:
@@ -303,6 +315,10 @@ class BleService {
   Future<void> disconnect() async {
     AppLogger.logInfo('Отключение от устройства...');
     
+    // ИЗМЕНЕНИЕ: Полностью сбрасываем пару сохраненных параметров в памяти при явном отключении
+    AppSettings().setSavedDongleId('');
+    AppSettings().setSavedDongleName('');
+
     FlutterBackgroundService().invoke('stopService');
 
     await _connectedDevice?.disconnect();

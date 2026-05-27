@@ -1,7 +1,7 @@
 /*
  * Файл: app_settings.dart
- * Версия: 1.39.11
- * Изменения: Внедрена переменная showRegions для управления видимостью контуров оффлайн-карт.
+ * Версия: 1.41.3
+ * Изменения: Внедрены переменные savedDongleId и savedDongleName для реализации профессионального механизма автоподключения.
  */
 
 import 'package:flutter/foundation.dart';
@@ -31,9 +31,12 @@ class AppSettings extends ChangeNotifier {
 
   bool _showDrawingToolbar = false;
   bool _showDrawingLabels = true;
-  bool _showRegions = true; // ИЗМЕНЕНИЕ: Видимость регионов
+  bool _showRegions = true;
 
   int _mapNetworkMode = 0; 
+  
+  String _savedDongleId = '';   // ИЗМЕНЕНИЕ: ID устройства
+  String _savedDongleName = ''; // ИЗМЕНЕНИЕ: Последнее известное имя устройства
 
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
@@ -64,6 +67,9 @@ class AppSettings extends ChangeNotifier {
     
     _mapNetworkMode = _prefs!.getInt('mapNetworkMode') ?? 0;
     
+    _savedDongleId = _prefs!.getString('savedDongleId') ?? '';     // ИЗМЕНЕНИЕ: Загрузка ID
+    _savedDongleName = _prefs!.getString('savedDongleName') ?? ''; // ИЗМЕНЕНИЕ: Загрузка имени
+    
     notifyListeners();
   }
 
@@ -87,6 +93,9 @@ class AppSettings extends ChangeNotifier {
   bool get showRegions => _showRegions;
 
   int get mapNetworkMode => _mapNetworkMode;
+  
+  String get savedDongleId => _savedDongleId;     // ИЗМЕНЕНИЕ: Геттер ID
+  String get savedDongleName => _savedDongleName; // ИЗМЕНЕНИЕ: Геттер имени
 
   void setTrackTimeMs(int value) {
     if (_trackTimeMs != value) {
@@ -204,6 +213,24 @@ class AppSettings extends ChangeNotifier {
     if (_mapNetworkMode != value) {
       _mapNetworkMode = value;
       _prefs?.setInt('mapNetworkMode', value);
+      notifyListeners();
+    }
+  }
+
+  // ИЗМЕНЕНИЕ: Метод сохранения ID донгла
+  void setSavedDongleId(String value) {
+    if (_savedDongleId != value) {
+      _savedDongleId = value;
+      _prefs?.setString('savedDongleId', value);
+      notifyListeners();
+    }
+  }
+
+  // ИЗМЕНЕНИЕ: Метод сохранения имени донгла
+  void setSavedDongleName(String value) {
+    if (_savedDongleName != value) {
+      _savedDongleName = value;
+      _prefs?.setString('savedDongleName', value);
       notifyListeners();
     }
   }

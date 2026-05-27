@@ -81,7 +81,13 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               ElevatedButton.icon(
                 onPressed: () => _bleService.disconnect(),
                 icon: const Icon(Icons.bluetooth_disabled),
-                label: Text('Отключить ${_bleService.connectedDeviceName.value}'),
+                // Оборачиваем label в builder для реактивного обновления имени
+                label: ValueListenableBuilder<String>(
+                  valueListenable: _bleService.connectedDeviceName,
+                  builder: (context, deviceName, child) {
+                    return Text('Отключить $deviceName');
+                  },
+                ),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 15),
                   backgroundColor: colorScheme.errorContainer,
