@@ -2,7 +2,7 @@ import os
 
 # Настройки
 PROJECT_NAME = "Naviga_Operator"
-VERSION = "1.39.16"
+VERSION = "1.39.18"
 OUTPUT_FILE = f"{PROJECT_NAME}_Snapshot_v{VERSION}.md"
 EXTENSIONS = ('.dart', '.yaml')
 EXCLUDE_DIRS = {'.dart_tool', '.git', 'build', 'android', 'ios'} # Исключаем папки сборки

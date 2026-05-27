@@ -1,7 +1,7 @@
 /*
  * Файл: ble_service.dart
- * Версия: 1.30
- * Изменения: ЭТАП 4, Шаг 15. Добавлен метод _updateBackgroundNotification для проброса телеметрии в изолированный фоновый поток через шину сообщений (invoke).
+ * Версия: 1.40.1
+ * Изменения: Шаг 1 (UX/UC). Сохранение ID Донгла в AppSettings при успешном подключении.
  * Описание: BLE-сервис управления соединением и диспетчеризации пакетов.
  */
 
@@ -14,6 +14,7 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'ble_protocol.dart';
 import 'node_database.dart';
 import 'app_logger.dart';
+import 'app_settings.dart'; // ИЗМЕНЕНИЕ: Добавлен импорт AppSettings
 
 class BleService {
   static final BleService _instance = BleService._internal();
@@ -103,6 +104,10 @@ class BleService {
       
       if (_txCharacteristic != null && _rxCharacteristic != null) {
         AppLogger.logInfo('Характеристики найдены. Подписка на уведомления...');
+        
+        // ИЗМЕНЕНИЕ: Сохраняем ID Донгла как "свой" после полной проверки валидности характеристик
+        AppSettings().setSavedDongleId(device.remoteId.str);
+        
         await _txCharacteristic!.setNotifyValue(true);
         _txCharacteristic!.lastValueStream.listen(_handleIncomingData);
         _requestIdentity();
@@ -265,7 +270,7 @@ class BleService {
           final pkt = BleEvtMyStatus.fromBytes(data);
           AppLogger.logRxMyStatus(pkt);
           myStatusNotifier.value = pkt;
-          _updateBackgroundNotification(); // ИЗМЕНЕНИЕ 1.30: Обновляем шторку при получении телеметрии
+          _updateBackgroundNotification(); 
           break;
           
         case BleOpCode.evtNodeUpdate:
