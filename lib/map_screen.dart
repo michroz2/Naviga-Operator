@@ -1,7 +1,7 @@
 /*
  * Файл: map_screen.dart
- * Версия: 1.42.3
- * Изменения: Исправлена ошибка null-safety в onPositionChanged путем добавления проверки параметров камеры на null.
+ * Версия: 1.42.4
+ * Изменения: Добавлена обработка долгого нажатия (onLongPress) на кнопку геолокации для автоматического центрирования и масштабирования карты по всем видимым узлам сети (через MapCalculator).
  */
 
 import 'dart:async';
@@ -17,6 +17,7 @@ import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
 import 'ble_service.dart';
 import 'app_settings.dart'; 
 import 'offline_map_manager.dart'; 
+import 'map_calculator.dart'; // ИЗМЕНЕНИЕ 1.42.4: Импорт калькулятора границ
 
 import 'map_components/map_scale_bar.dart';
 import 'map_components/map_compass.dart';
@@ -268,7 +269,6 @@ class _MapScreenState extends State<MapScreen> {
                   initialZoom: initialZoom,
                   interactionOptions: InteractionOptions(flags: interactiveFlags),
                   
-                  // ИЗМЕНЕНИЕ 1.42.3: Безопасное извлечение координат с проверкой на null
                   onPositionChanged: (camera, hasGesture) {
                     if (hasGesture && camera.center != null && camera.zoom != null) {
                       AppSettings().saveMapPosition(
@@ -410,18 +410,35 @@ class _MapScreenState extends State<MapScreen> {
           _buildDraggableDownloadWidget(),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
+      // ИЗМЕНЕНИЕ 1.42.4: Обертка в GestureDetector для перехвата длинного нажатия (FitBounds)
+      floatingActionButton: GestureDetector(
+        onLongPress: () {
+          final nodes = _bleService.nodeDatabase.nodes;
           final myId = _bleService.identityNotifier.value?.myNodeId;
-          final myNode = _bleService.nodeDatabase.nodes[myId];
-          if (myNode != null && myNode.hasValidGps) {
-            _mapController.move(LatLng(myNode.lat, myNode.lon), 16.0);
-            
-            AppSettings().saveMapPosition(myNode.lat, myNode.lon, 16.0);
+          
+          final cameraFit = MapCalculator.calculateInitialFit(nodes, myId);
+          if (cameraFit != null) {
+            _mapController.fitCamera(cameraFit);
+            // Примечание: Программное изменение позиции не меняет AppSettings, 
+            // так как hasGesture в onPositionChanged будет false.
           }
         },
-        tooltip: 'Найти себя',
-        child: const Icon(Icons.my_location),
+        child: FloatingActionButton(
+          onPressed: () {
+            final myId = _bleService.identityNotifier.value?.myNodeId;
+            final myNode = _bleService.nodeDatabase.nodes[myId];
+            if (myNode != null && myNode.hasValidGps) {
+              // Считываем текущий зум перед перемещением
+              final currentZoom = _mapController.camera.zoom;
+         
+              _mapController.move(LatLng(myNode.lat, myNode.lon), currentZoom);
+              
+              AppSettings().saveMapPosition(myNode.lat, myNode.lon, currentZoom);
+            }
+          },
+          //tooltip: 'Найти себя (Удерж: Показать всех)',
+          child: const Icon(Icons.my_location),
+        ),
       ),
     );
   }
