@@ -1,7 +1,7 @@
 /*
  * Файл: app_settings.dart
- * Версия: 1.41.3
- * Изменения: Внедрены переменные savedDongleId и savedDongleName для реализации профессионального механизма автоподключения.
+ * Версия: 1.42.2
+ * Изменения: Добавлены переменные для сохранения последней позиции и зума камеры на карте.
  */
 
 import 'package:flutter/foundation.dart';
@@ -35,8 +35,13 @@ class AppSettings extends ChangeNotifier {
 
   int _mapNetworkMode = 0; 
   
-  String _savedDongleId = '';   // ИЗМЕНЕНИЕ: ID устройства
-  String _savedDongleName = ''; // ИЗМЕНЕНИЕ: Последнее известное имя устройства
+  String _savedDongleId = '';   
+  String _savedDongleName = ''; 
+
+  // ИЗМЕНЕНИЕ 1.42.2: Переменные позиции карты
+  double _mapLastLat = 0.0;
+  double _mapLastLng = 0.0;
+  double _mapLastZoom = 15.0;
 
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
@@ -67,8 +72,13 @@ class AppSettings extends ChangeNotifier {
     
     _mapNetworkMode = _prefs!.getInt('mapNetworkMode') ?? 0;
     
-    _savedDongleId = _prefs!.getString('savedDongleId') ?? '';     // ИЗМЕНЕНИЕ: Загрузка ID
-    _savedDongleName = _prefs!.getString('savedDongleName') ?? ''; // ИЗМЕНЕНИЕ: Загрузка имени
+    _savedDongleId = _prefs!.getString('savedDongleId') ?? '';     
+    _savedDongleName = _prefs!.getString('savedDongleName') ?? ''; 
+
+    // ИЗМЕНЕНИЕ 1.42.2: Загрузка позиции
+    _mapLastLat = _prefs!.getDouble('mapLastLat') ?? 0.0;
+    _mapLastLng = _prefs!.getDouble('mapLastLng') ?? 0.0;
+    _mapLastZoom = _prefs!.getDouble('mapLastZoom') ?? 15.0;
     
     notifyListeners();
   }
@@ -94,8 +104,13 @@ class AppSettings extends ChangeNotifier {
 
   int get mapNetworkMode => _mapNetworkMode;
   
-  String get savedDongleId => _savedDongleId;     // ИЗМЕНЕНИЕ: Геттер ID
-  String get savedDongleName => _savedDongleName; // ИЗМЕНЕНИЕ: Геттер имени
+  String get savedDongleId => _savedDongleId;     
+  String get savedDongleName => _savedDongleName; 
+
+  // ИЗМЕНЕНИЕ 1.42.2: Геттеры позиции
+  double get mapLastLat => _mapLastLat;
+  double get mapLastLng => _mapLastLng;
+  double get mapLastZoom => _mapLastZoom;
 
   void setTrackTimeMs(int value) {
     if (_trackTimeMs != value) {
@@ -217,7 +232,6 @@ class AppSettings extends ChangeNotifier {
     }
   }
 
-  // ИЗМЕНЕНИЕ: Метод сохранения ID донгла
   void setSavedDongleId(String value) {
     if (_savedDongleId != value) {
       _savedDongleId = value;
@@ -226,12 +240,21 @@ class AppSettings extends ChangeNotifier {
     }
   }
 
-  // ИЗМЕНЕНИЕ: Метод сохранения имени донгла
   void setSavedDongleName(String value) {
     if (_savedDongleName != value) {
       _savedDongleName = value;
       _prefs?.setString('savedDongleName', value);
       notifyListeners();
     }
+  }
+
+  // ИЗМЕНЕНИЕ 1.42.2: Метод тихого сохранения (БЕЗ notifyListeners)
+  void saveMapPosition(double lat, double lng, double zoom) {
+    _mapLastLat = lat;
+    _mapLastLng = lng;
+    _mapLastZoom = zoom;
+    _prefs?.setDouble('mapLastLat', lat);
+    _prefs?.setDouble('mapLastLng', lng);
+    _prefs?.setDouble('mapLastZoom', zoom);
   }
 }
