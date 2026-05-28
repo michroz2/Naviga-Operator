@@ -1,7 +1,7 @@
 /*
  * Файл: scanner_screen.dart
- * Версия: 1.41.3
- * Изменения: Отображение реального сохраненного имени донгла в сообщении автоподключения без квадратных скобок.
+ * Версия: 1.41.6
+ * Изменения: Добавлена карточка «Без подключения к Донглу» для быстрого перехода в полноценный автономный оффлайн-режим работы.
  * Описание: Экран сканирования BLE устройств.
  */
 
@@ -9,9 +9,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'app_config.dart';
-import 'app_settings.dart'; // ИЗМЕНЕНИЕ: Импорт настроек
+import 'app_settings.dart';
 import 'ble_service.dart';
 import 'main_menu_screen.dart';
+import 'offline_menu_screen.dart'; // ИЗМЕНЕНИЕ 1.41.6: Импорт автономного меню
 
 class ScannerScreen extends StatefulWidget {
   const ScannerScreen({super.key});
@@ -22,15 +23,14 @@ class ScannerScreen extends StatefulWidget {
 
 class _ScannerScreenState extends State<ScannerScreen> {
   final BleService _bleService = BleService();
-  bool _isAutoConnecting = false; // ИЗМЕНЕНИЕ: Флаг для блокировки UI
+  bool _isAutoConnecting = false;
 
   @override
   void initState() {
     super.initState();
-    _checkAutoConnect(); // ИЗМЕНЕНИЕ: Запуск проверки автоподключения
+    _checkAutoConnect();
   }
 
-  // ИЗМЕНЕНИЕ: Метод проверки и подключения
   Future<void> _checkAutoConnect() async {
     final savedId = AppSettings().savedDongleId;
     
@@ -53,7 +53,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
             MaterialPageRoute(builder: (context) => const MainMenuScreen()),
           );
           
-          // При возврате (пользователь отключился) запускаем сканирование
           _bleService.startScan();
           return;
         }
@@ -61,7 +60,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
         debugPrint('Ошибка автоподключения: $e');
       }
       
-      // Снимаем блокировку, если автоподключение не удалось
       if (mounted) {
         setState(() {
           _isAutoConnecting = false;
@@ -69,7 +67,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
       }
     }
     
-    // Если ID пустой или автоподключение сорвалось — штатный поиск
     _bleService.startScan();
   }
 
@@ -85,14 +82,12 @@ class _ScannerScreenState extends State<ScannerScreen> {
           IconButton(
             icon: const Icon(Icons.exit_to_app),
             onPressed: () {
-              // Явный выход — отключаем сервис (что также сотрет сохраненные данные внутри ble_service)
               _bleService.disconnect();
               SystemNavigator.pop();
             },
           )
         ],
       ),
-      // ИЗМЕНЕНИЕ: Отображение лоадера при автоподключении с выводом сохраненного имени без скобок
       body: _isAutoConnecting
           ? Center(
               child: Column(
@@ -126,6 +121,27 @@ class _ScannerScreenState extends State<ScannerScreen> {
                     },
                   ),
                 ),
+                
+                // ИЗМЕНЕНИЕ 1.41.6: Статическая карточка автономного режима над списком устройств
+                Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  color: colorScheme.surfaceVariant.withOpacity(0.4),
+                  elevation: 2,
+                  child: ListTile(
+                    leading: Icon(Icons.cloud_off_rounded, color: colorScheme.secondary),
+                    title: const Text('Без подключения к Донглу', style: TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: const Text('Автономный режим (Карты, Настройки, Обмен)'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const OfflineMenuScreen()),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 8),
+
                 Expanded(
                   child: ValueListenableBuilder<List<ScanResult>>(
                     valueListenable: _bleService.scanResultsNotifier,
