@@ -1,8 +1,8 @@
 /*
  * Файл: main_menu_screen.dart
- * Версия: 1.41.4
+ * Версия: 1.43.9
  * Описание: Главный дашборд управления Донглом.
- * Изменения: Карточка телеметрии адаптирована для горячего реконнекта (UC-25): сохраняет данные батареи и выводит статус автопоиска.
+ * Изменения: Добавлено диалоговое окно подтверждения (alert) при попытке отключиться от Донгла (как через кнопку, так и через жест/кнопку "Назад").
  */
 
 import 'dart:convert';
@@ -44,7 +44,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   }
 
   void _connectionListener() {
-    // ИЗМЕНЕНИЕ 1.41.4: Выбрасываем на сканер только если соединение разорвано И ID в настройках пуст (ручной клик "Отключить")
     if (!_bleService.isConnected.value && AppSettings().savedDongleId.isEmpty && mounted) {
       Navigator.of(context).popUntil((route) => route.isFirst);
     }
@@ -59,6 +58,49 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     }
   }
 
+  // ИЗМЕНЕНИЕ 1.43.9: Метод показа окна подтверждения отключения
+  Future<bool> _showDisconnectConfirmation(BuildContext context) async {
+    final dongleName = AppSettings().savedDongleName.isNotEmpty 
+        ? AppSettings().savedDongleName 
+        : 'устройства';
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) {
+        return AlertDialog(
+          title: const Text('Отключение'),
+          content: Text('Отключиться от Донгла "$dongleName"?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('ОТМЕНА'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error,
+              ),
+              child: const Text('ОТКЛЮЧИТЬ'),
+            ),
+          ],
+        );
+      },
+    );
+
+    return result ?? false;
+  }
+
+  // ИЗМЕНЕНИЕ 1.43.9: Общий метод для обработки процесса отключения
+  Future<void> _handleDisconnect(BuildContext context) async {
+    final shouldDisconnect = await _showDisconnectConfirmation(context);
+    
+    if (shouldDisconnect && context.mounted) {
+      await _bleService.disconnect();
+      // Выбрасываем пользователя на экран сканера (самый первый роут)
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -67,7 +109,8 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        await _bleService.disconnect(); 
+        // ИЗМЕНЕНИЕ 1.43.9: При нажатии "Назад" вызываем подтверждение
+        await _handleDisconnect(context);
       },
       child: Scaffold(
         appBar: AppBar(
@@ -80,7 +123,8 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               ElevatedButton.icon(
-                onPressed: () => _bleService.disconnect(),
+                // ИЗМЕНЕНИЕ 1.43.9: Кнопка также вызывает окно подтверждения
+                onPressed: () => _handleDisconnect(context),
                 icon: const Icon(Icons.bluetooth_disabled),
                 label: ValueListenableBuilder<String>(
                   valueListenable: _bleService.connectedDeviceName,
@@ -215,7 +259,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               ),
               const SizedBox(height: 10),
 
-              // ИЗМЕНЕНИЕ 1.41.4: Перевод карточки телеметрии на совместный ListenableBuilder
               ListenableBuilder(
                 listenable: Listenable.merge([_bleService.myStatusNotifier, _bleService.isReconnecting]),
                 builder: (context, child) {
@@ -277,7 +320,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                             ],
                           ),
                           const Divider(),
-                          // Показываем батарею всегда (если status != null), даже во время реконнекта
                           if (status != null)
                             Text('Батарея: ${status.batteryPercent}% (${(status.batteryVoltage / 1000).toStringAsFixed(2)} В)', style: const TextStyle(fontSize: 16))
                           else
@@ -407,7 +449,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                         padding: const EdgeInsets.all(16.0),
                         child: Row(
                           children: [
-                            Icon(Icons.download_for_offline, color: Colors.blueGrey, size: 32),
+                            const Icon(Icons.download_for_offline, color: Colors.blueGrey, size: 32),
                             const SizedBox(width: 16),
                             Expanded(
                               child: Column(
