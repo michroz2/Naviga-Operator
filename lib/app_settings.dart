@@ -1,7 +1,7 @@
 /*
  * Файл: app_settings.dart
- * Версия: 1.42.2
- * Изменения: Добавлены переменные для сохранения последней позиции и зума камеры на карте.
+ * Версия: 1.43.6
+ * Изменения: Добавлена переменная startupScreenMode (0 - Главное меню, 1 - Карта) для выбора стартового экрана после успешного автоподключения.
  */
 
 import 'package:flutter/foundation.dart';
@@ -38,10 +38,13 @@ class AppSettings extends ChangeNotifier {
   String _savedDongleId = '';   
   String _savedDongleName = ''; 
 
-  // ИЗМЕНЕНИЕ 1.42.2: Переменные позиции карты
+  // Переменные позиции карты
   double _mapLastLat = 0.0;
   double _mapLastLng = 0.0;
   double _mapLastZoom = 15.0;
+
+  // ИЗМЕНЕНИЕ 1.43.6: Стартовый экран
+  int _startupScreenMode = 0;
 
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
@@ -75,10 +78,13 @@ class AppSettings extends ChangeNotifier {
     _savedDongleId = _prefs!.getString('savedDongleId') ?? '';     
     _savedDongleName = _prefs!.getString('savedDongleName') ?? ''; 
 
-    // ИЗМЕНЕНИЕ 1.42.2: Загрузка позиции
+    // Загрузка позиции
     _mapLastLat = _prefs!.getDouble('mapLastLat') ?? 0.0;
     _mapLastLng = _prefs!.getDouble('mapLastLng') ?? 0.0;
     _mapLastZoom = _prefs!.getDouble('mapLastZoom') ?? 15.0;
+
+    // ИЗМЕНЕНИЕ 1.43.6: Загрузка режима стартового экрана
+    _startupScreenMode = _prefs!.getInt('startupScreenMode') ?? 0;
     
     notifyListeners();
   }
@@ -107,10 +113,12 @@ class AppSettings extends ChangeNotifier {
   String get savedDongleId => _savedDongleId;     
   String get savedDongleName => _savedDongleName; 
 
-  // ИЗМЕНЕНИЕ 1.42.2: Геттеры позиции
   double get mapLastLat => _mapLastLat;
   double get mapLastLng => _mapLastLng;
   double get mapLastZoom => _mapLastZoom;
+
+  // ИЗМЕНЕНИЕ 1.43.6: Геттер
+  int get startupScreenMode => _startupScreenMode;
 
   void setTrackTimeMs(int value) {
     if (_trackTimeMs != value) {
@@ -248,7 +256,15 @@ class AppSettings extends ChangeNotifier {
     }
   }
 
-  // ИЗМЕНЕНИЕ 1.42.2: Метод тихого сохранения (БЕЗ notifyListeners)
+  // ИЗМЕНЕНИЕ 1.43.6: Сеттер
+  void setStartupScreenMode(int value) {
+    if (_startupScreenMode != value) {
+      _startupScreenMode = value;
+      _prefs?.setInt('startupScreenMode', value);
+      notifyListeners();
+    }
+  }
+
   void saveMapPosition(double lat, double lng, double zoom) {
     _mapLastLat = lat;
     _mapLastLng = lng;

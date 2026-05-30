@@ -1,7 +1,7 @@
 /*
  * Файл: settings_screen.dart
- * Версия: 1.39.11
- * Изменения: В секцию "Тактическая разметка" добавлен SwitchListTile для управления видимостью рамок оффлайн-карт (showRegions).
+ * Версия: 1.43.6
+ * Изменения: В системную секцию добавлена настройка выбора стартового экрана при автоподключении (startupScreenMode).
  */
 
 import 'package:flutter/material.dart';
@@ -31,9 +31,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   
   late bool _showDrawingToolbar;
   late bool _showDrawingLabels;
-  late bool _showRegions; // ИЗМЕНЕНИЕ
+  late bool _showRegions;
   
   late int _mapNetworkMode;
+  late int _startupScreenMode; // ИЗМЕНЕНИЕ 1.43.6
 
   bool _isCancelled = false;
 
@@ -58,6 +59,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     2: 'Только Онлайн (Без Кэша)',
   };
 
+  // ИЗМЕНЕНИЕ 1.43.6: Опции для выпадающего списка
+  final Map<int, String> _startupOptions = {
+    0: 'Главное меню',
+    1: 'Карта',
+  };
+
   @override
   void initState() {
     super.initState();
@@ -78,6 +85,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _showRegions = _settings.showRegions;
     
     _mapNetworkMode = _settings.mapNetworkMode;
+    _startupScreenMode = _settings.startupScreenMode; // ИЗМЕНЕНИЕ 1.43.6
   }
 
   void _saveAllSettings() {
@@ -98,6 +106,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _settings.setShowRegions(_showRegions);
     
     _settings.setMapNetworkMode(_mapNetworkMode);
+    _settings.setStartupScreenMode(_startupScreenMode); // ИЗМЕНЕНИЕ 1.43.6
   }
 
   void _showResetConfirmation(BuildContext context) {
@@ -133,6 +142,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _showRegions = true;
                   
                   _mapNetworkMode = 0;
+                  _startupScreenMode = 0; // ИЗМЕНЕНИЕ 1.43.6
                 });
               },
               style: TextButton.styleFrom(foregroundColor: Colors.orange.shade900),
@@ -236,6 +246,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const Divider(height: 32),
 
             _buildSectionHeader(Icons.settings_system_daydream, 'Системные'),
+            // ИЗМЕНЕНИЕ 1.43.6: Выбор стартового экрана
+            _buildDropdownRow(
+              'Стартовый экран при автоподключении',
+              _startupScreenMode,
+              _startupOptions,
+              (val) => setState(() => _startupScreenMode = val as int),
+            ),
             SwitchListTile(
               title: const Text('Не гасить карту', style: TextStyle(fontWeight: FontWeight.w500)),
               subtitle: const Text('Предотвращает засыпание устройства на Карте'),

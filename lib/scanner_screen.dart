@@ -1,7 +1,7 @@
 /*
  * Файл: scanner_screen.dart
- * Версия: 1.41.6
- * Изменения: Добавлена карточка «Без подключения к Донглу» для быстрого перехода в полноценный автономный оффлайн-режим работы.
+ * Версия: 1.41.8
+ * Изменения: Хотфикс стека навигации. При старте с Карты в стек предварительно подкладывается Главное меню (MainMenuScreen), чтобы кнопка "Назад" возвращала в меню, а не в Сканер.
  * Описание: Экран сканирования BLE устройств.
  */
 
@@ -12,7 +12,8 @@ import 'app_config.dart';
 import 'app_settings.dart';
 import 'ble_service.dart';
 import 'main_menu_screen.dart';
-import 'offline_menu_screen.dart'; // ИЗМЕНЕНИЕ 1.41.6: Импорт автономного меню
+import 'offline_menu_screen.dart'; 
+import 'map_screen.dart'; 
 
 class ScannerScreen extends StatefulWidget {
   const ScannerScreen({super.key});
@@ -48,10 +49,26 @@ class _ScannerScreenState extends State<ScannerScreen> {
             _isAutoConnecting = false;
           });
           
-          await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const MainMenuScreen()),
-          );
+          // ИЗМЕНЕНИЕ 1.41.8: Правильное построение стека окон
+          if (AppSettings().startupScreenMode == 1) {
+            // 1. Кладём в стек Главное меню и запоминаем Future его закрытия
+            final menuFuture = Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const MainMenuScreen()),
+            );
+            // 2. Сразу поверх кладём Карту
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const MapScreen()),
+            );
+            // 3. Ждём, пока пользователь не закроет Главное меню (чтобы возобновить скан)
+            await menuFuture;
+          } else {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const MainMenuScreen()),
+            );
+          }
           
           _bleService.startScan();
           return;
@@ -122,7 +139,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
                   ),
                 ),
                 
-                // ИЗМЕНЕНИЕ 1.41.6: Статическая карточка автономного режима над списком устройств
                 Card(
                   margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                   color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
@@ -166,10 +182,23 @@ class _ScannerScreenState extends State<ScannerScreen> {
                                   await _bleService.connectToDevice(r.device);
                                   
                                   if (_bleService.isConnected.value && context.mounted) {
-                                    await Navigator.push(
-                                      context,
-                                      MaterialPageRoute(builder: (context) => const MainMenuScreen()),
-                                    );
+                                    // ИЗМЕНЕНИЕ 1.41.8: Правильное построение стека при ручном подключении
+                                    if (AppSettings().startupScreenMode == 1) {
+                                      final menuFuture = Navigator.push(
+                                        context,
+                                        MaterialPageRoute(builder: (context) => const MainMenuScreen()),
+                                      );
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(builder: (context) => const MapScreen()),
+                                      );
+                                      await menuFuture;
+                                    } else {
+                                      await Navigator.push(
+                                        context,
+                                        MaterialPageRoute(builder: (context) => const MainMenuScreen()),
+                                      );
+                                    }
                                     _bleService.startScan();
                                   }
                                 },
