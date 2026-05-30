@@ -1,8 +1,8 @@
 /*
  * Файл: main_menu_screen.dart
- * Версия: 1.43.9
+ * Версия: 1.43.10
  * Описание: Главный дашборд управления Донглом.
- * Изменения: Добавлено диалоговое окно подтверждения (alert) при попытке отключиться от Донгла (как через кнопку, так и через жест/кнопку "Назад").
+ * Изменения: В заголовок (AppBar) добавлена иконка "logout" для быстрого закрытия программы (SystemNavigator.pop) без отключения от Донгла и без подтверждения.
  */
 
 import 'dart:convert';
@@ -58,7 +58,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     }
   }
 
-  // ИЗМЕНЕНИЕ 1.43.9: Метод показа окна подтверждения отключения
+  // Метод показа окна подтверждения отключения
   Future<bool> _showDisconnectConfirmation(BuildContext context) async {
     final dongleName = AppSettings().savedDongleName.isNotEmpty 
         ? AppSettings().savedDongleName 
@@ -90,13 +90,12 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     return result ?? false;
   }
 
-  // ИЗМЕНЕНИЕ 1.43.9: Общий метод для обработки процесса отключения
+  // Общий метод для обработки процесса отключения
   Future<void> _handleDisconnect(BuildContext context) async {
     final shouldDisconnect = await _showDisconnectConfirmation(context);
     
     if (shouldDisconnect && context.mounted) {
       await _bleService.disconnect();
-      // Выбрасываем пользователя на экран сканера (самый первый роут)
       Navigator.of(context).popUntil((route) => route.isFirst);
     }
   }
@@ -109,13 +108,22 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        // ИЗМЕНЕНИЕ 1.43.9: При нажатии "Назад" вызываем подтверждение
         await _handleDisconnect(context);
       },
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Naviga-${AppConfig.version} Меню'),
           backgroundColor: colorScheme.inversePrimary,
+          // ИЗМЕНЕНИЕ 1.43.10: Добавление кнопки прямого выхода из программы в AppBar
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.logout),
+              tooltip: 'Выход из программы',
+              onPressed: () {
+                SystemNavigator.pop();
+              },
+            ),
+          ],
         ),
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
@@ -123,7 +131,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               ElevatedButton.icon(
-                // ИЗМЕНЕНИЕ 1.43.9: Кнопка также вызывает окно подтверждения
                 onPressed: () => _handleDisconnect(context),
                 icon: const Icon(Icons.bluetooth_disabled),
                 label: ValueListenableBuilder<String>(
