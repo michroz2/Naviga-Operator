@@ -51,7 +51,7 @@ class _MapScreenState extends State<MapScreen> {
   bool _isMapReady = false;
 
   DrawingTool _activeTool = DrawingTool.view;
-  List<LatLng> _currentDrawingLinePath = [];
+  final List<LatLng> _currentDrawingLinePath = [];
   bool _isRegionDrawingActive = false; 
 
   double _downloadWidgetX = 16.0;
@@ -330,7 +330,7 @@ class _MapScreenState extends State<MapScreen> {
                             throw const SocketException('No network');
                           }
                         } catch (_) {
-                          if (mounted) {
+                          if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text('Нет соединения с сервером карт. Загрузка невозможна.'),
@@ -344,7 +344,7 @@ class _MapScreenState extends State<MapScreen> {
 
                         DrawingManager().addElement(newRegion);
                         OfflineMapManager().downloadRegion(newRegion);
-                        if (mounted) {
+                        if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(content: Text('Загрузка региона "${newRegion.label}" запущена в фоне'))
                           );

@@ -100,9 +100,9 @@ class _DrawingMenuSheetState extends State<DrawingMenuSheet> {
 
   void _save() {
     if (_labelController.text.trim().isEmpty) {
-      if (widget.targetType == TacticalType.point) _labelController.text = 'Точка';
-      else if (widget.targetType == TacticalType.line) _labelController.text = 'Линия';
-      else _labelController.text = 'Регион';
+      if (widget.targetType == TacticalType.point) {_labelController.text = 'Точка';}
+      else if (widget.targetType == TacticalType.line) {_labelController.text = 'Линия';}
+      else {_labelController.text = 'Регион';}
     }
 
     if (widget.targetType == TacticalType.point) {
