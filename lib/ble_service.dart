@@ -78,7 +78,7 @@ class BleService {
     AppLogger.logInfo('Попытка подключения к ${device.remoteId}...');
     
     try {
-      await device.connect(license: License.free, autoConnect: false);
+      await device.connect(license: License.nonprofit, autoConnect: false);
       _connectedDevice = device;
       
       String platformName = device.platformName.isEmpty ? device.advName : device.platformName;
@@ -164,7 +164,7 @@ class BleService {
       AppLogger.logInfo('Попытка восстановления связи с Донглом (Попытка №${attemptCount + 1})...');
       try {
         final device = BluetoothDevice.fromId(AppSettings().savedDongleId);
-        await device.connect(license: License.free, autoConnect: false, timeout: const Duration(seconds: 5));
+        await device.connect(license: License.nonprofit, autoConnect: false, timeout: const Duration(seconds: 5));
         
         _connectedDevice = device;
         connectedDeviceName.value = AppSettings().savedDongleName;
@@ -269,7 +269,9 @@ class BleService {
 
       AppLogger.logInfo('Запрос точных координат смартфона...');
       Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
       );
 
       final payload = Uint8List(9);

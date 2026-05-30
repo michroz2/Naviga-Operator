@@ -31,9 +31,9 @@ void main() async {
   // Настройка логгера Bluetooth
   FlutterBluePlus.setLogLevel(LogLevel.error, color: false);
 
-  print('\n=========================================');
-  print('===== ОПЕРАТОР START version ${AppConfig.version} =====');
-  print('=========================================\n');
+  debugPrint('\n=========================================');
+  debugPrint('===== ОПЕРАТОР START version ${AppConfig.version} =====');
+  debugPrint('=========================================\n');
   
   runApp(const NavigaTestApp());
 }

@@ -69,17 +69,17 @@ class OfflineMapManager extends ChangeNotifier {
           notifyListeners();
         },
         onError: (e) {
-          print('Ошибка загрузки региона ${region.label}: $e');
+          debugPrint('Ошибка загрузки региона ${region.label}: $e');
           _resetState();
         },
         onDone: () {
-          print('Регион ${region.label} успешно загружен.');
+          debugPrint('Регион ${region.label} успешно загружен.');
           _resetState();
         },
         cancelOnError: true,
       );
     } catch (e) {
-      print('Критическая ошибка запуска загрузки: $e');
+      debugPrint('Критическая ошибка запуска загрузки: $e');
       _resetState();
     }
   }
@@ -90,7 +90,7 @@ class OfflineMapManager extends ChangeNotifier {
     try {
       FMTCStore('NavigaStore').download.cancel(instanceId: _currentInstanceId!);
     } catch (e) {
-      print('Ошибка при отмене загрузки FMTC: $e');
+      debugPrint('Ошибка при отмене загрузки FMTC: $e');
     }
     
     _downloadSubscription?.cancel();

@@ -7,6 +7,7 @@
 
 import 'dart:ui';
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'app_config.dart';
@@ -58,7 +59,7 @@ class BackgroundManager {
     DartPluginRegistrant.ensureInitialized();
     final FlutterLocalNotificationsPlugin notificationPlugin = FlutterLocalNotificationsPlugin();
 
-    print('=== Фоновый Isolate Naviga запущен ===');
+    debugPrint('=== Фоновый Isolate Naviga запущен ===');
 
     // Слушаем данные, прилетающие из главного потока приложения
     service.on('updateNotification').listen((event) {
@@ -83,7 +84,7 @@ class BackgroundManager {
 
     service.on('stopService').listen((event) {
       service.stopSelf();
-      print('=== Фоновый Isolate остановлен ===');
+      debugPrint('=== Фоновый Isolate остановлен ===');
     });
   }
 }

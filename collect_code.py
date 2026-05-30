@@ -31,7 +31,7 @@ def collect_code():
                         outfile.write(f"// Error reading file: {e}\n")
                     outfile.write("\n```\n\n---\n\n")
 
-    print(f"Готово! Весь код собран в файл: {OUTPUT_FILE}")
+    debugPrint(f"Готово! Весь код собран в файл: {OUTPUT_FILE}")
 
 if __name__ == "__main__":
     collect_code()

@@ -7,6 +7,7 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'drawing_models.dart';
 
@@ -39,7 +40,7 @@ class DrawingStorage {
         }
       }).toList();
     } catch (e) {
-      print('Ошибка загрузки разметки: $e');
+      debugPrint('Ошибка загрузки разметки: $e');
       return [];
     }
   }
@@ -70,7 +71,7 @@ class DrawingStorage {
         }
       }).toList();
     } catch (e) {
-      print('Ошибка импорта: $e');
+      debugPrint('Ошибка импорта: $e');
       return [];
     }
   }
