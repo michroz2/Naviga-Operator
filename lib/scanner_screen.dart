@@ -76,11 +76,11 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Naviga v${AppConfig.version} Подключение'),
+        title: const Text('Naviga-${AppConfig.version} Подключение'),
         backgroundColor: colorScheme.inversePrimary,
         actions: [
           IconButton(
-            icon: const Icon(Icons.exit_to_app),
+            icon: const Icon(Icons.logout),
             onPressed: () {
               _bleService.disconnect();
               SystemNavigator.pop();
@@ -128,8 +128,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
                   color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
                   elevation: 2,
                   child: ListTile(
-                    leading: Icon(Icons.cloud_off_rounded, color: colorScheme.secondary),
-                    title: const Text('Без подключения к Донглу', style: TextStyle(fontWeight: FontWeight.bold)),
+                    leading: Icon(Icons.bluetooth_disabled, color: colorScheme.secondary),
+                    title: const Text('Без подключения', style: TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: const Text('Автономный режим (Карты, Настройки, Обмен)'),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () {

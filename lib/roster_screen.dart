@@ -1,7 +1,7 @@
 /*
  * Файл: roster_screen.dart
- * Версия: 1.33.5
- * Изменения: Хотфикс UI. Полный переход на семантические цвета (Theme.of(context).colorScheme) для поддержки корректного отображения в тёмной теме. Убраны жёстко заданные цвета.
+ * Версия: 1.43.5
+ * Изменения: Добавлена кнопка "Refresh" (Icons.refresh) в заголовок окна для принудительного запроса Identity и FullSync у Донгла.
  * Описание: Экран отображения базы узлов (Ростер).
  */
 
@@ -44,12 +44,22 @@ class RosterScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bleService = BleService();
-    final colorScheme = Theme.of(context).colorScheme; // Получаем текущую цветовую схему
+    final colorScheme = Theme.of(context).colorScheme; 
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Топология Сети'),
         backgroundColor: colorScheme.inversePrimary,
+        // ИЗМЕНЕНИЕ 1.33.6: Добавлен блок actions с кнопкой Refresh
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Обновить топологию',
+            onPressed: () {
+              bleService.forceTopologyRefresh();
+            },
+          ),
+        ],
       ),
       body: ListenableBuilder(
         listenable: Listenable.merge([
@@ -161,7 +171,7 @@ class NodeDetailsSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final now = DateTime.now().millisecondsSinceEpoch;
     final secondsAgo = ((now - node.lastSeenTimeMs) / 1000).toStringAsFixed(1);
-    final colorScheme = Theme.of(context).colorScheme; // Получаем схему для модального окна
+    final colorScheme = Theme.of(context).colorScheme; 
 
     return Padding(
       padding: const EdgeInsets.all(24.0),

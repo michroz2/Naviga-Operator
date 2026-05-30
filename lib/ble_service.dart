@@ -244,6 +244,11 @@ class BleService {
   void _requestIdentity() => _sendCommand([BleOpCode.cmdReqIdentity]);
   void _requestSysConfig() => _sendCommand([BleOpCode.cmdReqSysConfig]);
   void requestFullSync() => _sendCommand([BleOpCode.cmdReqFullSync]);
+  void forceTopologyRefresh() {
+    AppLogger.logInfo('Принудительное обновление ростера (Refresh)...');
+    _requestIdentity();
+    Future.delayed(const Duration(milliseconds: 300), requestFullSync);
+  }
 
   Future<void> sendAnchorCoords() async {
     try {

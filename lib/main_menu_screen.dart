@@ -8,7 +8,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
+import 'app_config.dart';
 import 'ble_protocol.dart';
 import 'ble_service.dart';
 import 'roster_screen.dart';
@@ -71,7 +71,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Naviga Меню'),
+          title: const Text('Naviga-${AppConfig.version} Меню'),
           backgroundColor: colorScheme.inversePrimary,
         ),
         body: SingleChildScrollView(
@@ -119,8 +119,8 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text('Топология Сети (Список)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                                  Text('Найдено соседей: $neighborsCount', style: const TextStyle(fontSize: 16)),
+                                  const Text('Список Донглов в Сети', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                  Text('Всего соседей: $neighborsCount', style: const TextStyle(fontSize: 16)),
                                 ],
                               ),
                             ),
@@ -173,6 +173,41 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                             Icon(Icons.chevron_right, color: hasValidGps ? Colors.grey : Colors.transparent),
                           ],
                         ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 10),
+
+              ValueListenableBuilder<BleIdentity?>(
+                valueListenable: _bleService.identityNotifier,
+                builder: (context, identity, child) {
+                  if (identity == null) return const SizedBox.shrink();
+                  return Card(
+                    elevation: 4,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Идентификация Узла', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                              IconButton(
+                                icon: Icon(Icons.edit, color: colorScheme.primary),
+                                onPressed: () {
+                                  Navigator.push(context, MaterialPageRoute(builder: (context) => EditIdentityScreen(currentIdentity: identity)));
+                                },
+                              ),
+                            ],
+                          ),
+                          const Divider(),
+                          Text('Имя: ${identity.myName}', style: const TextStyle(fontSize: 16)),
+                          Text('Локальный ID: ${identity.myNodeId}', style: const TextStyle(fontSize: 16)),
+                          Text('Роль: ${_getRoleName(identity.myRole)}', style: const TextStyle(fontSize: 16)),
+                        ],
                       ),
                     ),
                   );
@@ -295,41 +330,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               ),
               const SizedBox(height: 10),
 
-              ValueListenableBuilder<BleIdentity?>(
-                valueListenable: _bleService.identityNotifier,
-                builder: (context, identity, child) {
-                  if (identity == null) return const SizedBox.shrink();
-                  return Card(
-                    elevation: 4,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('Идентификация Узла', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                              IconButton(
-                                icon: Icon(Icons.edit, color: colorScheme.primary),
-                                onPressed: () {
-                                  Navigator.push(context, MaterialPageRoute(builder: (context) => EditIdentityScreen(currentIdentity: identity)));
-                                },
-                              ),
-                            ],
-                          ),
-                          const Divider(),
-                          Text('Имя: ${identity.myName}', style: const TextStyle(fontSize: 16)),
-                          Text('Локальный ID: ${identity.myNodeId}', style: const TextStyle(fontSize: 16)),
-                          Text('Роль: ${_getRoleName(identity.myRole)}', style: const TextStyle(fontSize: 16)),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 10),
-
               ValueListenableBuilder<BleSysConfig?>(
                 valueListenable: _bleService.sysConfigNotifier,
                 builder: (context, config, child) {
@@ -357,7 +357,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                           Text('Передача в движении: ${config.txIntervalMoving / 1000} сек', style: const TextStyle(fontSize: 16)),
                           Text('Передача на стоянке: ${config.txIntervalStill / 1000} сек', style: const TextStyle(fontSize: 16)),
                           Text('Таймаут потери связи: ${config.nodeConnectionTimeout / 1000} сек', style: const TextStyle(fontSize: 16)),
-                          Text('Удаление из БД: ${config.nodeActiveTimeoutMs / 1000} сек', style: const TextStyle(fontSize: 16)),
+                          Text('Удаление из списка: ${config.nodeActiveTimeoutMs / 1000} сек', style: const TextStyle(fontSize: 16)),
                         ],
                       ),
                     ),
