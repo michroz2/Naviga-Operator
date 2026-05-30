@@ -48,7 +48,7 @@ class _RegionSelectionLayerState extends State<RegionSelectionLayer> {
                   _regionDragCurrent!,
                   LatLng(_regionDragCurrent!.latitude, _regionDragStart!.longitude),
                 ],
-                color: Colors.blue.withOpacity(0.3),
+                color: Colors.blue.withValues(alpha: 0.3),
                 borderColor: Colors.blue,
                 borderStrokeWidth: 2.0,
               )

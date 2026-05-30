@@ -140,7 +140,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                   final hasValidGps = _bleService.nodeDatabase.hasAnyValidGps;
                   return Card(
                     elevation: hasValidGps ? 4 : 1,
-                    color: hasValidGps ? null : colorScheme.surfaceVariant,
+                    color: hasValidGps ? null : colorScheme.surfaceContainerHighest,
                     child: InkWell(
                       onTap: hasValidGps ? () {
                         Navigator.push(context, MaterialPageRoute(builder: (context) => const MapScreen()));
@@ -397,7 +397,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                   
                   return Card(
                     elevation: 4,
-                    color: manager.isDownloading ? colorScheme.primaryContainer.withOpacity(0.5) : null,
+                    color: manager.isDownloading ? colorScheme.primaryContainer.withValues(alpha: 0.5) : null,
                     child: InkWell(
                       onTap: () {
                         Navigator.push(context, MaterialPageRoute(builder: (context) => const MapScreen(isOfflineSelectMode: true)));
@@ -421,7 +421,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                                     const SizedBox(height: 4),
                                     LinearProgressIndicator(
                                       value: manager.progressPercentage / 100.0,
-                                      backgroundColor: colorScheme.surfaceVariant,
+                                      backgroundColor: colorScheme.surfaceContainerHighest,
                                       color: colorScheme.primary,
                                     ),
                                   ] else ...[
@@ -545,7 +545,7 @@ class _EditIdentityScreenState extends State<EditIdentityScreen> {
             ),
             const SizedBox(height: 20),
             DropdownButtonFormField<int>(
-              value: _selectedRole,
+              initialValue: _selectedRole,
               decoration: const InputDecoration(labelText: 'Роль устройства', border: OutlineInputBorder()),
               items: const [
                 DropdownMenuItem(value: 0, child: Text('Ретранслятор (Relay)')),

@@ -115,7 +115,7 @@ class _RegionDownloadSheetState extends State<RegionDownloadSheet> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: _isOverLimit ? colorScheme.errorContainer : colorScheme.surfaceVariant,
+              color: _isOverLimit ? colorScheme.errorContainer : colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(8),
               border: _isOverLimit ? Border.all(color: colorScheme.error, width: 1) : null,
             ),

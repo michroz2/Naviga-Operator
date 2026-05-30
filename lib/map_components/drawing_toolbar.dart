@@ -29,7 +29,7 @@ class DrawingToolbar extends StatelessWidget {
       curve: Curves.easeInOut,
       height: 48.0,
       decoration: BoxDecoration(
-        color: colorScheme.surface.withOpacity(0.95),
+        color: colorScheme.surface.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(24.0),
         boxShadow: [
           BoxShadow(

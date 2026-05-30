@@ -87,7 +87,7 @@ class MapDrawingLayer extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.85),
+                        color: Colors.white.withValues(alpha: 0.85),
                         borderRadius: BorderRadius.circular(4),
                         border: Border.all(color: Colors.black12, width: 0.5),
                       ),
@@ -121,9 +121,9 @@ class MapDrawingLayer extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.9),
+          color: Colors.white.withValues(alpha: 0.9),
           borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: color.withOpacity(0.6), width: 1.0),
+          border: Border.all(color: color.withValues(alpha: 0.6), width: 1.0),
           boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2, offset: Offset(0, 1))],
         ),
         child: Text(

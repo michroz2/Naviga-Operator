@@ -63,7 +63,7 @@ class NodesLayer extends StatelessWidget {
                 return Polyline(
                   points: track,
                   strokeWidth: AppSettings().trackWidth, 
-                  color: style.color.withOpacity(isOnline ? 0.6 : 0.3),
+                  color: style.color.withValues(alpha: isOnline ? 0.6 : 0.3),
                 );
               }).where((p) => p.points.length > 1).toList(), 
             ),
@@ -121,7 +121,7 @@ class NodesLayer extends StatelessWidget {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.85),
+                                color: Colors.white.withValues(alpha: 0.85),
                                 borderRadius: BorderRadius.circular(6),
                                 border: Border.all(color: Colors.black12),
                               ),

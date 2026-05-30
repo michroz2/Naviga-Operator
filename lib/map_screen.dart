@@ -149,7 +149,7 @@ class _MapScreenState extends State<MapScreen> {
                 width: 260,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: colorScheme.surface.withOpacity(0.95),
+                  color: colorScheme.surface.withValues(alpha: 0.95),
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))],
                   border: Border.all(color: colorScheme.outlineVariant),
@@ -178,7 +178,7 @@ class _MapScreenState extends State<MapScreen> {
                     const SizedBox(height: 12),
                     LinearProgressIndicator(
                       value: manager.progressPercentage / 100.0,
-                      backgroundColor: colorScheme.surfaceVariant,
+                      backgroundColor: colorScheme.surfaceContainerHighest,
                       color: colorScheme.primary,
                       borderRadius: BorderRadius.circular(4),
                     ),
@@ -359,7 +359,7 @@ class _MapScreenState extends State<MapScreen> {
                         Polyline(
                           points: _currentDrawingLinePath,
                           strokeWidth: DrawingManager().lastLineWidth,
-                          color: Color(int.parse(DrawingManager().lastLineColorHex.replaceFirst('#', '0xFF'))).withOpacity(0.7),
+                          color: Color(int.parse(DrawingManager().lastLineColorHex.replaceFirst('#', '0xFF'))).withValues(alpha: 0.7),
                         ),
                       ],
                     ),

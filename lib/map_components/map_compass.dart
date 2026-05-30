@@ -33,7 +33,7 @@ class MapCompassWidget extends StatelessWidget {
           width: 48,
           height: 48,
           decoration: BoxDecoration(
-            color: surfaceColor.withOpacity(0.85),
+            color: surfaceColor.withValues(alpha: 0.85),
             shape: BoxShape.circle,
             boxShadow: const [
               BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))

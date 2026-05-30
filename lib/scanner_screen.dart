@@ -125,7 +125,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                 // ИЗМЕНЕНИЕ 1.41.6: Статическая карточка автономного режима над списком устройств
                 Card(
                   margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  color: colorScheme.surfaceVariant.withOpacity(0.4),
+                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
                   elevation: 2,
                   child: ListTile(
                     leading: Icon(Icons.cloud_off_rounded, color: colorScheme.secondary),

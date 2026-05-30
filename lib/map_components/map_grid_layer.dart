@@ -86,7 +86,7 @@ class _MapGridLayerState extends State<MapGridLayer> {
     final double endLon = ((lon + _currentGridBufferLon) / lonStep).ceil() * lonStep;
 
     List<Polyline> lines = [];
-    final Color gridColor = Colors.grey.withOpacity(gridOpacity);
+    final Color gridColor = Colors.grey.withValues(alpha: gridOpacity);
 
     for (double l = startLat; l <= endLat; l += latStep) {
       lines.add(Polyline(

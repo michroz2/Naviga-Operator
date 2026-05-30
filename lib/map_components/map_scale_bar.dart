@@ -65,7 +65,7 @@ class MapScaleBar extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               decoration: BoxDecoration(
-                color: surfaceColor.withOpacity(0.85),
+                color: surfaceColor.withValues(alpha: 0.85),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
@@ -83,7 +83,7 @@ class MapScaleBar extends StatelessWidget {
               height: 4,
               decoration: BoxDecoration(
                 color: onSurfaceColor,
-                border: Border.all(color: surfaceColor.withOpacity(0.85), width: 1),
+                border: Border.all(color: surfaceColor.withValues(alpha: 0.85), width: 1),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),

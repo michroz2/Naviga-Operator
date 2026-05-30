@@ -66,7 +66,7 @@ class OfflineMenuScreen extends StatelessWidget {
                 
                 return Card(
                   elevation: 4,
-                  color: manager.isDownloading ? colorScheme.primaryContainer.withOpacity(0.5) : null,
+                  color: manager.isDownloading ? colorScheme.primaryContainer.withValues(alpha: 0.5) : null,
                   child: InkWell(
                     onTap: () {
                       Navigator.push(
@@ -95,7 +95,7 @@ class OfflineMenuScreen extends StatelessWidget {
                                   const SizedBox(height: 4),
                                   LinearProgressIndicator(
                                     value: manager.progressPercentage / 100.0,
-                                    backgroundColor: colorScheme.surfaceVariant,
+                                    backgroundColor: colorScheme.surfaceContainerHighest,
                                     color: colorScheme.primary,
                                   ),
                                 ] else ...[

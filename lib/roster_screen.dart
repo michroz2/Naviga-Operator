@@ -102,7 +102,7 @@ class RosterScreen extends StatelessWidget {
                   color: isMe ? colorScheme.primaryContainer : null,
                   child: ListTile(
                     leading: CircleAvatar(
-                      backgroundColor: isMe ? colorScheme.primary : (isOnline ? colorScheme.secondaryContainer : colorScheme.surfaceVariant),
+                      backgroundColor: isMe ? colorScheme.primary : (isOnline ? colorScheme.secondaryContainer : colorScheme.surfaceContainerHighest),
                       child: Icon(_getRoleIcon(node.role, isMe), color: isMe ? colorScheme.onPrimary : (isOnline ? colorScheme.onSecondaryContainer : colorScheme.onSurfaceVariant)),
                     ),
                     title: Text(
@@ -187,7 +187,7 @@ class NodeDetailsSheet extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: isOnline ? Colors.green.withOpacity(0.15) : colorScheme.errorContainer, 
+                  color: isOnline ? Colors.green.withValues(alpha: 0.15) : colorScheme.errorContainer, 
                   borderRadius: BorderRadius.circular(15)
                 ),
                 child: Text(
